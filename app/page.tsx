@@ -607,6 +607,33 @@ export default function DashboardPage() {
   // HANDLERS DO MÓDULO IA: VISÃO E PROCESSAMENTO DA PLANTA BAIXA
   // =========================================================================
 
+  // Helper para converter SVG para PNG Base64 nativo (para compatibilidade total com Gemini Vision)
+  const converterSvgParaPngBase64 = (svgDataUri: string): Promise<string> => {
+    return new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 820;
+          canvas.height = 550;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#0A0F1D';
+            ctx.fillRect(0, 0, 820, 550);
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+          } else {
+            resolve(svgDataUri);
+          }
+        };
+        img.onerror = () => resolve(svgDataUri);
+        img.src = svgDataUri;
+      } catch {
+        resolve(svgDataUri);
+      }
+    });
+  };
+
   // Upload manual de arquivo pelo input
   const handleSelecionarArquivoPlanta = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -624,16 +651,18 @@ export default function DashboardPage() {
   };
 
   // Carregar planta arquitetônica modelo com 1-click
-  const handleCarregarPlantaModelo = () => {
-    setNomeArquivoPlanta('planta_arquitetonica_chale_45m2.svg');
+  const handleCarregarPlantaModelo = async () => {
+    setNomeArquivoPlanta('planta_arquitetonica_chale_45m2.png');
     setImagemPlantaUrl(PLANTA_EXEMPLO_SVG);
-    setImagemPlantaBase64(PLANTA_EXEMPLO_SVG);
+    const pngBase64 = await converterSvgParaPngBase64(PLANTA_EXEMPLO_SVG);
+    setImagemPlantaBase64(pngBase64);
     setResultadoAnaliseIA(null);
   };
 
   // Executar processamento de IA / Visão Computacional
   const handleProcessarPlantaComIA = async () => {
-    if (!imagemPlantaUrl && !imagemPlantaBase64) {
+    const imagemAlvo = imagemPlantaBase64 || imagemPlantaUrl;
+    if (!imagemAlvo) {
       alert('Por favor, carregue uma imagem da planta baixa ou clique em "Carregar Planta Modelo" primeiro.');
       return;
     }
@@ -658,22 +687,41 @@ export default function DashboardPage() {
     }, 3600);
 
     try {
+      let payloadBase64 = imagemAlvo;
+      let mime = 'image/png';
+      
+      if (imagemAlvo.startsWith('data:image/svg+xml')) {
+        payloadBase64 = await converterSvgParaPngBase64(imagemAlvo);
+        mime = 'image/png';
+      } else if (imagemAlvo.startsWith('data:image/jpeg') || imagemAlvo.startsWith('data:image/jpg')) {
+        mime = 'image/jpeg';
+      } else if (imagemAlvo.startsWith('data:image/webp')) {
+        mime = 'image/webp';
+      } else if (imagemAlvo.startsWith('data:application/pdf')) {
+        mime = 'application/pdf';
+      }
+
       const response = await fetch('/api/analisar-planta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imagemBase64: imagemPlantaBase64,
-          mimeType: nomeArquivoPlanta.endsWith('.png') ? 'image/png' : 'image/jpeg',
+          imagemBase64: payloadBase64,
+          mimeType: mime,
           areaEstimada: areaUtil,
         }),
       });
 
       const data: AnalisePlantaResponse = await response.json();
+
+      if (!response.ok || !data.sucesso) {
+        throw new Error(data.erro || 'Falha ao processar a planta com o modelo de inteligência artificial Gemini Vision.');
+      }
+
       setResultadoAnaliseIA(data);
       setModalResultadoAberto(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro na análise da planta:', err);
-      alert('Ocorreu um erro ao processar a planta. Tente novamente.');
+      alert(err?.message || 'Ocorreu um erro ao processar a planta. Verifique sua chave GEMINI_API_KEY no arquivo .env.local.');
     } finally {
       clearTimeout(timer1);
       clearTimeout(timer2);
