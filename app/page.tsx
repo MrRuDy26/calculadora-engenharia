@@ -31,7 +31,8 @@ import {
   Scan,
   Eye,
   Check,
-  RefreshCw
+  RefreshCw,
+  Lock
 } from 'lucide-react';
 import { PlantaItemGerado, AnalisePlantaResponse } from './api/analisar-planta/route';
 
@@ -82,70 +83,11 @@ const STATUS_OPTIONS: StatusItem[] = [
   'Planejado',
 ];
 
-// Planta baixa arquitetônica vetorial de exemplo (Chalé 45,10 m²: 5,50m x 8,20m)
-const PLANTA_EXEMPLO_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 550" width="820" height="550" style="background:%230A0F1D;font-family:monospace">
-  <defs>
-    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="%231E293B" stroke-width="0.8"/>
-    </pattern>
-  </defs>
-  <rect width="820" height="550" fill="url(%23grid)" />
-  
-  <!-- Linhas de Cota Arquitetônicas Externas -->
-  <line x1="80" y1="50" x2="740" y2="50" stroke="%2338BDF8" stroke-width="1.5" stroke-dasharray="4"/>
-  <text x="390" y="42" fill="%2338BDF8" font-size="12" font-weight="bold" text-anchor="middle">8,20 m (COMPRIMENTO TOTAL)</text>
-  <line x1="50" y1="80" x2="50" y2="480" stroke="%2338BDF8" stroke-width="1.5" stroke-dasharray="4"/>
-  <text x="42" y="290" fill="%2338BDF8" font-size="12" font-weight="bold" text-anchor="middle" transform="rotate(-90 42 290)">5,50 m (LARGURA TOTAL)</text>
-
-  <!-- Laje Radier Perimétrica de Concreto -->
-  <rect x="80" y="80" width="660" height="400" fill="%230F172A" stroke="%2338BDF8" stroke-width="4" rx="4"/>
-  <text x="730" y="470" fill="%2364748B" font-size="10" text-anchor="end">LAJE RADIER 45,10 m² (ESP. 10cm)</text>
-
-  <!-- PAREDES DE MADEIRA PINUS AUTOCLAVADO CCA (+10% PERDA) -->
-  <!-- Sala e Cozinha Americana -->
-  <rect x="85" y="85" width="400" height="390" fill="%230F172A" stroke="%23D97706" stroke-width="2"/>
-  <text x="285" y="240" fill="%23FCD34D" font-size="14" font-weight="bold" text-anchor="middle">SALA & COZINHA INTEGRADA</text>
-  <text x="285" y="260" fill="%2394A3B8" font-size="11" text-anchor="middle">Madeiramento Pinus CCA (Macho-Fêmea)</text>
-
-  <!-- Quarto / Suíte Mezanino -->
-  <rect x="490" y="85" width="245" height="230" fill="%230F172A" stroke="%23D97706" stroke-width="2"/>
-  <text x="612" y="190" fill="%23FCD34D" font-size="13" font-weight="bold" text-anchor="middle">DORMITÓRIO / MEZANINO</text>
-  <text x="612" y="210" fill="%2394A3B8" font-size="10" text-anchor="middle">13,20 m² • Piso Madeira</text>
-
-  <!-- ÁREA ÚMIDA: BANHEIRO SOCIAL EM ALVENARIA CONVENCIONAL -->
-  <rect x="490" y="320" width="245" height="155" fill="%231E293B" stroke="%23EF4444" stroke-width="3"/>
-  <rect x="630" y="325" width="100" height="145" fill="%23334155" stroke="%2338BDF8" stroke-width="1.5"/>
-  <text x="560" y="380" fill="%23FCA5A5" font-size="12" font-weight="bold" text-anchor="middle">BANHEIRO</text>
-  <text x="560" y="398" fill="%23F87171" font-size="9" font-weight="bold" text-anchor="middle">[ALVENARIA CONVENCIONAL]</text>
-  <text x="560" y="414" fill="%23CBD5E1" font-size="8" text-anchor="middle">Blindagem contra umidade</text>
-  <text x="680" y="400" fill="%2338BDF8" font-size="10" font-weight="bold" text-anchor="middle">BOX CHUV.</text>
-
-  <!-- ESQUADRIAS -->
-  <!-- Porta Entrada Principal -->
-  <rect x="75" y="250" width="10" height="70" fill="%2310B981" stroke="%2334D399" stroke-width="2"/>
-  <path d="M 85 250 A 70 70 0 0 1 155 320" fill="none" stroke="%2334D399" stroke-width="1.5" stroke-dasharray="3"/>
-  <text x="120" y="240" fill="%2334D399" font-size="9" font-weight="bold">P1 (0,90m Pivotante)</text>
-
-  <!-- Porta Balcão Deck/Varanda -->
-  <rect x="230" y="475" width="120" height="10" fill="%2310B981" stroke="%2334D399" stroke-width="2"/>
-  <text x="290" y="505" fill="%2334D399" font-size="10" font-weight="bold" text-anchor="middle">PORTA-BALCÃO (1,60x2,10m)</text>
-
-  <!-- Janelas de Quarto e Sala -->
-  <rect x="220" y="75" width="90" height="10" fill="%2338BDF8" stroke="%237DD3FC" stroke-width="2"/>
-  <text x="265" y="70" fill="%2338BDF8" font-size="9" font-weight="bold" text-anchor="middle">J1 (1,20x1,00m)</text>
-
-  <rect x="735" y="160" width="10" height="80" fill="%2338BDF8" stroke="%237DD3FC" stroke-width="2"/>
-  <text x="750" y="205" fill="%2338BDF8" font-size="9" font-weight="bold">J2 (1,20x1,00m)</text>
-
-  <!-- Maxim-ar Banheiro -->
-  <rect x="735" y="375" width="10" height="45" fill="%23A855F7" stroke="%23C084FC" stroke-width="2"/>
-  <text x="750" y="400" fill="%23C084FC" font-size="9" font-weight="bold">J3 (Maxim-ar)</text>
-</svg>`;
-
 export default function DashboardPage() {
   // Parâmetros Globais do Projeto
-  const [areaUtil, setAreaUtil] = useState<number>(45.10);
-  const [metaOrcamento, setMetaOrcamento] = useState<number>(40000);
+  // Parâmetros Globais do Projeto (Iniciam 100% Zerados até a IA ler a planta ou usuário preencher)
+  const [areaUtil, setAreaUtil] = useState<number>(0);
+  const [metaOrcamento, setMetaOrcamento] = useState<number>(0);
   const [itens, setItens] = useState<ItemObra[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -189,8 +131,8 @@ export default function DashboardPage() {
       const metaSalva = localStorage.getItem(STORAGE_META_KEY);
       const itensSalvos = localStorage.getItem(STORAGE_ITENS_KEY);
 
-      if (areaSalva) setAreaUtil(Math.max(1, parseFloat(areaSalva) || 45.10));
-      if (metaSalva) setMetaOrcamento(Math.max(0, parseFloat(metaSalva) || 40000));
+      if (areaSalva !== null) setAreaUtil(parseFloat(areaSalva) || 0);
+      if (metaSalva !== null) setMetaOrcamento(parseFloat(metaSalva) || 0);
       if (itensSalvos) {
         const parsed = JSON.parse(itensSalvos);
         if (Array.isArray(parsed)) {
@@ -215,7 +157,7 @@ export default function DashboardPage() {
   }, []);
 
   const handleAtualizarArea = (novaArea: number) => {
-    const val = Math.max(1, novaArea || 1);
+    const val = Math.max(0, novaArea || 0);
     setAreaUtil(val);
     try {
       localStorage.setItem(STORAGE_AREA_KEY, val.toString());
@@ -264,6 +206,9 @@ export default function DashboardPage() {
 
   // Geometria paramétrica estimada (Chalé proporcional retangular ~1:1.5)
   const parametrosGeometricos = useMemo(() => {
+    if (areaUtil <= 0) {
+      return { largura: 0, comprimento: 0, perimetro: 0, peDireito: 2.70 };
+    }
     const largura = Math.sqrt(areaUtil / 1.5);
     const comprimento = 1.5 * largura;
     const perimetro = 2 * (largura + comprimento);
@@ -273,6 +218,10 @@ export default function DashboardPage() {
 
   // Módulo 1: Radier (Fundação)
   const gerarParametricoRadier = () => {
+    if (areaUtil <= 0) {
+      alert('Defina uma Área Útil (m²) maior que zero ou faça o upload da planta com IA para calcular a fundação.');
+      return;
+    }
     const { perimetro } = parametrosGeometricos;
     const volumeConcreto = Number((areaUtil * 0.10 * 1.10).toFixed(2));
     const areaMalha = Number((areaUtil * 1.15).toFixed(2));
@@ -357,6 +306,10 @@ export default function DashboardPage() {
 
   // Módulo 2: Estrutura de Madeira (Pinus / Eucalipto Autoclavado CCA c/ 10% perda)
   const gerarParametricoEstrutura = () => {
+    if (areaUtil <= 0) {
+      alert('Defina uma Área Útil (m²) maior que zero ou faça o upload da planta com IA para calcular a estrutura.');
+      return;
+    }
     const { perimetro, peDireito } = parametrosGeometricos;
     const areaParedesLiquida = perimetro * peDireito * 0.85;
     const areaParedesComPerda = Number((areaParedesLiquida * 1.10).toFixed(2));
@@ -428,6 +381,10 @@ export default function DashboardPage() {
 
   // Módulo 3: Cobertura Sanduíche Termoacústica PIR
   const gerarParametricoCobertura = () => {
+    if (areaUtil <= 0) {
+      alert('Defina uma Área Útil (m²) maior que zero ou faça o upload da planta com IA para calcular a cobertura.');
+      return;
+    }
     const { comprimento } = parametrosGeometricos;
     const areaTelhadoReal = Number((areaUtil * 1.28).toFixed(2));
     const metrosCumeeira = Number((comprimento * 1.10).toFixed(2));
@@ -483,6 +440,10 @@ export default function DashboardPage() {
 
   // Módulo 4: Esquadrias e Insumos de Vedação
   const gerarParametricoEsquadrias = () => {
+    if (areaUtil <= 0) {
+      alert('Defina uma Área Útil (m²) maior que zero ou faça o upload da planta com IA para calcular as esquadrias.');
+      return;
+    }
     const novosItensEsquadrias: ItemObra[] = [
       {
         id: `esq-portas-${Date.now()}-1`,
@@ -533,6 +494,10 @@ export default function DashboardPage() {
 
   // Módulo 5: Gerar Obra Completa Paramétrica
   const gerarObraCompletaParametrica = () => {
+    if (areaUtil <= 0) {
+      alert('Defina uma Área Útil (m²) maior que zero ou faça o upload da planta com IA para gerar a obra completa.');
+      return;
+    }
     if (itens.length > 0) {
       if (!confirm('Deseja gerar a obra completa? Os novos módulos de engenharia serão adicionados ao orçamento.')) {
         return;
@@ -544,63 +509,27 @@ export default function DashboardPage() {
     setTimeout(() => gerarParametricoEsquadrias(), 150);
   };
 
-  // Limpar / Zerar Tudo
+  // Limpar / Zerar Tudo (Tabela, Área, Meta, Planta e LocalStorage)
   const handleZerarTudo = () => {
-    if (confirm('Tem certeza que deseja zerar a tabela de itens? Todo o orçamento atual será apagado para iniciar um novo planejamento do zero.')) {
+    if (confirm('Tem certeza que deseja zerar tudo? Todo o orçamento atual, área útil e planta carregada serão limpos.')) {
       salvarItens([]);
+      handleAtualizarArea(0);
+      handleAtualizarMeta(0);
+      setImagemPlantaUrl(null);
+      setImagemPlantaBase64(null);
+      setNomeArquivoPlanta('');
+      setResultadoAnaliseIA(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      try {
+        localStorage.removeItem(STORAGE_ITENS_KEY);
+        localStorage.removeItem(STORAGE_AREA_KEY);
+        localStorage.removeItem(STORAGE_META_KEY);
+      } catch (e) {
+        console.error('Erro ao limpar LocalStorage:', e);
+      }
     }
-  };
-
-  // Carregar Modelo de Referência Oficial
-  const handleCarregarExemploModelo = () => {
-    const modeloReferencia: ItemObra[] = [
-      {
-        id: 'ref-1',
-        codigo: '1.0',
-        descricao: 'Fundação (Radier de Concreto Armado 25 MPa c/ Malha POP e Lona)',
-        categoria: 'Fundação',
-        unidade: 'm²',
-        quantidade: 45.10,
-        aplicarMargemPerda: true,
-        status: 'Pronto',
-        valorBruto: 5500.00,
-        desconto: 218.90,
-        valorLiquido: 5281.10,
-        observacoes: 'Laje radier monolítica impermeabilizada com 10% de folga técnica executada.',
-      },
-      {
-        id: 'ref-2',
-        codigo: '2.0',
-        descricao: 'Kit Estrutural Pinus Autoclavado CCA + Cobertura Sanduíche PIR 30mm',
-        categoria: 'Estrutura & Cobertura',
-        unidade: 'conjunto',
-        quantidade: 1,
-        aplicarMargemPerda: true,
-        status: 'Em Cotação',
-        valorBruto: 33500.00,
-        desconto: 1863.00,
-        valorLiquido: 31637.00,
-        observacoes: 'Pilares e vigamento tratado CCA com telha termoacústica dispensando caibros intermediários.',
-      },
-      {
-        id: 'ref-3',
-        codigo: '3.0',
-        descricao: 'Kit Esquadrias em Alumínio Preto Linha Suprema + Vidros 8mm',
-        categoria: 'Esquadrias',
-        unidade: 'conjunto',
-        quantidade: 1,
-        aplicarMargemPerda: false,
-        status: 'Em Cotação',
-        valorBruto: 7718.10,
-        desconto: 538.10,
-        valorLiquido: 7180.00,
-        observacoes: 'Portas e janelas pretas com vidros temperados e vedação perimetral estanque.',
-      },
-    ];
-
-    handleAtualizarArea(45.10);
-    handleAtualizarMeta(40000);
-    salvarItens(modeloReferencia);
   };
 
   // =========================================================================
@@ -650,20 +579,13 @@ export default function DashboardPage() {
     reader.readAsDataURL(file);
   };
 
-  // Carregar planta arquitetônica modelo com 1-click
-  const handleCarregarPlantaModelo = async () => {
-    setNomeArquivoPlanta('planta_arquitetonica_chale_45m2.png');
-    setImagemPlantaUrl(PLANTA_EXEMPLO_SVG);
-    const pngBase64 = await converterSvgParaPngBase64(PLANTA_EXEMPLO_SVG);
-    setImagemPlantaBase64(pngBase64);
-    setResultadoAnaliseIA(null);
-  };
+
 
   // Executar processamento de IA / Visão Computacional
   const handleProcessarPlantaComIA = async () => {
     const imagemAlvo = imagemPlantaBase64 || imagemPlantaUrl;
     if (!imagemAlvo) {
-      alert('Por favor, carregue uma imagem da planta baixa ou clique em "Carregar Planta Modelo" primeiro.');
+      alert('Por favor, carregue uma imagem (PNG, JPG) ou PDF da planta baixa para processar com a IA.');
       return;
     }
 
@@ -996,15 +918,17 @@ export default function DashboardPage() {
                 Motor Paramétrico de Engenharia
               </span>
               <span className="px-2 py-0.5 text-xs font-mono font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 rounded-md">
-                Área Calibrada: {areaUtil.toFixed(2)} m²
+                {areaUtil > 0 ? `Área Calibrada: ${areaUtil.toFixed(2)} m²` : 'Aguardando Planta (0 m²)'}
               </span>
               <span className="text-xs text-slate-400 hidden sm:inline">• Dimensionamento em Tempo Real</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
-              Calculadora de Custos de Obra — <span className="text-emerald-400 font-mono">{areaUtil.toFixed(2)} m²</span>
+              Calculadora de Custos de Obra — <span className="text-emerald-400 font-mono">{areaUtil > 0 ? `${areaUtil.toFixed(2)} m²` : 'Aguardando Planta'}</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Todos os parâmetros estruturais, radier e quantitativos estão calibrados dinamicamente para <strong className="text-white font-mono">{areaUtil.toFixed(2)} m²</strong>.
+              {areaUtil > 0
+                ? `Todos os parâmetros estruturais, radier e quantitativos estão calibrados dinamicamente para ${areaUtil.toFixed(2)} m².`
+                : 'Envie a planta baixa pela IA ou defina a área útil para iniciar o dimensionamento e cálculo de custos.'}
             </p>
           </div>
 
@@ -1021,10 +945,11 @@ export default function DashboardPage() {
                 <input
                   type="number"
                   step="0.10"
-                  min="5"
-                  value={areaUtil}
+                  min="0"
+                  placeholder="0"
+                  value={areaUtil === 0 ? '' : areaUtil}
                   onChange={(e) => handleAtualizarArea(parseFloat(e.target.value) || 0)}
-                  className="w-20 bg-transparent text-sm font-bold text-white font-mono focus:outline-none"
+                  className="w-20 bg-transparent text-sm font-bold text-white font-mono focus:outline-none placeholder:text-slate-600"
                   title="Altere a metragem quadrada para recalcular os módulos"
                 />
               </div>
@@ -1041,9 +966,10 @@ export default function DashboardPage() {
                   type="number"
                   step="500"
                   min="0"
-                  value={metaOrcamento}
+                  placeholder="0"
+                  value={metaOrcamento === 0 ? '' : metaOrcamento}
                   onChange={(e) => handleAtualizarMeta(parseFloat(e.target.value) || 0)}
-                  className="w-28 bg-transparent text-sm font-bold text-amber-400 font-mono focus:outline-none"
+                  className="w-28 bg-transparent text-sm font-bold text-amber-400 font-mono focus:outline-none placeholder:text-slate-600"
                   title="Meta orçamentária máxima da obra"
                 />
               </div>
@@ -1063,17 +989,9 @@ export default function DashboardPage() {
               <button
                 onClick={handleZerarTudo}
                 className="p-2.5 bg-slate-950 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 rounded-xl border border-slate-800 hover:border-rose-900/40 transition cursor-pointer"
-                title="Zerar todos os itens (Tabela Limpa)"
+                title="Zerar Tudo (Limpar Itens, Área e Planta)"
               >
                 <Trash2 className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={handleCarregarExemploModelo}
-                className="px-3 py-2 bg-slate-950 hover:bg-slate-800 text-xs font-semibold text-emerald-400 rounded-xl border border-slate-800 transition cursor-pointer"
-                title="Carregar exemplo oficial do Chalé 45,10 m²"
-              >
-                Exemplo 45m²
               </button>
             </div>
 
@@ -1104,16 +1022,27 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCarregarPlantaModelo}
-                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-950 hover:bg-slate-800 text-xs font-semibold text-cyan-400 rounded-xl border border-slate-800 transition cursor-pointer"
-                title="Carregar planta arquitetônica de teste (45,10 m²)"
-              >
-                <Eye className="w-3.5 h-3.5" />
-                Carregar Planta Modelo (45,10 m²)
-              </button>
-            </div>
+            {imagemPlantaUrl && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-emerald-400 font-mono font-medium flex items-center gap-1 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                  <Check className="w-3.5 h-3.5" />
+                  Planta Selecionada
+                </span>
+                <button
+                  onClick={() => {
+                    setImagemPlantaUrl(null);
+                    setImagemPlantaBase64(null);
+                    setNomeArquivoPlanta('');
+                    setResultadoAnaliseIA(null);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="p-1.5 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-lg border border-slate-800 text-xs transition cursor-pointer"
+                  title="Remover planta"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5">
@@ -1335,35 +1264,86 @@ export default function DashboardPage() {
         </section>
 
         {/* ================================================================= */}
-        {/* PAINEL DE ENGENHARIA PARAMÉTRICA: BOTÕES INTELIGENTES             */}
+        {/* PAINEL DE ENGENHARIA PARAMÉTRICA: BOTÕES INTELIGENTES (CONDICIONAL)*/}
         {/* ================================================================= */}
-        <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-5 shadow-xl backdrop-blur-md">
+        <section className={`bg-slate-900/80 border rounded-2xl p-5 shadow-xl backdrop-blur-md transition-all ${
+          areaUtil <= 0 ? 'border-amber-500/30' : 'border-slate-800/90'
+        }`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-emerald-400" />
-                Módulos de Cálculo Paramétrico Automático (Área: {areaUtil.toFixed(2)} m²)
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  Módulos de Cálculo Paramétrico Automático
+                </h2>
+                {areaUtil > 0 ? (
+                  <span className="px-2 py-0.5 text-xs font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md">
+                    Área: {areaUtil.toFixed(2)} m²
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 text-xs font-mono font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Bloqueado (0 m²)
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Clique em um módulo para dimensionar materiais, espessuras e margens de 10% com base nas dimensões calculadas.
+                {areaUtil > 0
+                  ? 'Clique em um módulo para dimensionar materiais, espessuras e margens de 10% com base nas dimensões calculadas.'
+                  : 'Aguardando definição da área da obra pela IA ou inserção manual para desbloquear os cálculos.'}
               </p>
             </div>
 
             <button
               onClick={gerarObraCompletaParametrica}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-emerald-950/40 active:scale-95 cursor-pointer self-start sm:self-auto"
+              disabled={areaUtil <= 0}
+              className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-xl transition shadow-lg self-start sm:self-auto ${
+                areaUtil > 0
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 active:scale-95 cursor-pointer'
+                  : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
+              }`}
             >
-              <Box className="w-3.5 h-3.5" />
-              Gerar Obra Completa ({areaUtil} m²)
+              {areaUtil <= 0 ? (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  Gerar Obra Completa (Bloqueado)
+                </>
+              ) : (
+                <>
+                  <Box className="w-3.5 h-3.5" />
+                  Gerar Obra Completa ({areaUtil.toFixed(2)} m²)
+                </>
+              )}
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Banner de Bloqueio Condicional quando areaUtil <= 0 */}
+          {areaUtil <= 0 && (
+            <div className="mb-4 p-4 rounded-xl bg-amber-950/20 border border-amber-500/30 flex items-start sm:items-center gap-3">
+              <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400 shrink-0 border border-amber-500/20">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div className="flex-1 text-xs">
+                <h4 className="font-bold text-amber-300">
+                  Módulos de Engenharia Paramétrica Bloqueados
+                </h4>
+                <p className="text-slate-300 mt-0.5 leading-relaxed">
+                  Para dimensionar a fundação radier, a volumetria de madeira e os quantitativos com margem de 10%,{' '}
+                  <strong className="text-amber-200">faça o upload da planta baixa no módulo de IA acima</strong> ou digite uma metragem válida no campo{' '}
+                  <strong className="text-amber-200">Área Útil (m²)</strong> no cabeçalho.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 ${
+            areaUtil <= 0 ? 'opacity-40 pointer-events-none select-none' : ''
+          }`}>
             
             {/* Módulo Radier */}
             <button
               onClick={gerarParametricoRadier}
-              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-emerald-500/40 transition group text-left cursor-pointer"
+              disabled={areaUtil <= 0}
+              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-emerald-500/40 transition group text-left cursor-pointer disabled:cursor-not-allowed"
             >
               <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:bg-emerald-500/20">
                 <Building className="w-4 h-4" />
@@ -1381,7 +1361,8 @@ export default function DashboardPage() {
             {/* Módulo Madeira */}
             <button
               onClick={gerarParametricoEstrutura}
-              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-amber-500/40 transition group text-left cursor-pointer"
+              disabled={areaUtil <= 0}
+              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-amber-500/40 transition group text-left cursor-pointer disabled:cursor-not-allowed"
             >
               <div className="p-2.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:bg-amber-500/20">
                 <Hammer className="w-4 h-4" />
@@ -1399,7 +1380,8 @@ export default function DashboardPage() {
             {/* Módulo Cobertura */}
             <button
               onClick={gerarParametricoCobertura}
-              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-blue-500/40 transition group text-left cursor-pointer"
+              disabled={areaUtil <= 0}
+              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-blue-500/40 transition group text-left cursor-pointer disabled:cursor-not-allowed"
             >
               <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 group-hover:bg-blue-500/20">
                 <ShieldCheck className="w-4 h-4" />
@@ -1417,7 +1399,8 @@ export default function DashboardPage() {
             {/* Módulo Esquadrias */}
             <button
               onClick={gerarParametricoEsquadrias}
-              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-purple-500/40 transition group text-left cursor-pointer"
+              disabled={areaUtil <= 0}
+              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-purple-500/40 transition group text-left cursor-pointer disabled:cursor-not-allowed"
             >
               <div className="p-2.5 rounded-lg bg-purple-500/10 text-purple-300 border border-purple-500/20 group-hover:bg-purple-500/20">
                 <Box className="w-4 h-4" />
@@ -1466,11 +1449,17 @@ export default function DashboardPage() {
               </div>
             </div>
             <p className="text-2xl sm:text-3xl font-extrabold text-indigo-400 mt-4 font-mono tracking-tight">
-              {formatMoney(custoSqm)}/m²
+              {areaUtil > 0 ? `${formatMoney(custoSqm)}/m²` : '—'}
             </p>
             <p className="text-xs text-slate-400 mt-2 flex items-center gap-1.5">
-              <span className="text-indigo-300 font-mono font-semibold">{areaUtil.toFixed(2)} m²</span>
-              <span>área ativa {areaUtil > 0 ? `(${formatMoney(custoTotal)} ÷ ${areaUtil.toFixed(2)} m²)` : ''}</span>
+              {areaUtil > 0 ? (
+                <>
+                  <span className="text-indigo-300 font-mono font-semibold">{areaUtil.toFixed(2)} m²</span>
+                  <span>área ativa ({formatMoney(custoTotal)} ÷ {areaUtil.toFixed(2)} m²)</span>
+                </>
+              ) : (
+                <span className="text-amber-400/80 font-mono">Aguardando Planta / Área (0 m²)</span>
+              )}
             </p>
           </div>
 
@@ -1501,10 +1490,10 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-baseline justify-between mt-4">
               <p className="text-2xl sm:text-3xl font-extrabold text-amber-400 font-mono tracking-tight">
-                {formatMoney(metaOrcamento)}
+                {metaOrcamento > 0 ? formatMoney(metaOrcamento) : 'R$ 0,00'}
               </p>
               <span className="text-xs font-mono text-slate-400">
-                {percentualMeta.toFixed(1)}% atingido
+                {metaOrcamento > 0 ? `${percentualMeta.toFixed(1)}% atingido` : 'Sem teto definido'}
               </span>
             </div>
             {/* Barra de Progresso da Meta */}
@@ -1513,7 +1502,7 @@ export default function DashboardPage() {
                 className={`h-full transition-all duration-500 ${
                   percentualMeta > 100 ? 'bg-rose-500' : 'bg-amber-400'
                 }`}
-                style={{ width: `${Math.min(100, percentualMeta)}%` }}
+                style={{ width: `${metaOrcamento > 0 ? Math.min(100, percentualMeta) : 0}%` }}
               ></div>
             </div>
           </div>
@@ -1622,20 +1611,20 @@ export default function DashboardPage() {
               </div>
 
               {itens.length === 0 ? (
-                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                  <button
-                    onClick={gerarObraCompletaParametrica}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-lg shadow-emerald-950/40"
-                  >
-                    <Box className="w-4 h-4" />
-                    Calcular Obra Completa para {areaUtil} m²
-                  </button>
-                  <button
-                    onClick={handleCarregarExemploModelo}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition cursor-pointer"
-                  >
-                    Carregar Exemplo Modelo (45,10 m²)
-                  </button>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                  {areaUtil > 0 ? (
+                    <button
+                      onClick={gerarObraCompletaParametrica}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-lg shadow-emerald-950/40"
+                    >
+                      <Box className="w-4 h-4" />
+                      Calcular Obra Completa para {areaUtil.toFixed(2)} m²
+                    </button>
+                  ) : (
+                    <p className="text-xs text-slate-400 text-center">
+                      Nenhum item adicionado. Envie a planta baixa pela IA acima ou defina a área para gerar o orçamento paramétrico.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <button
