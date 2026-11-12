@@ -122,11 +122,13 @@ export async function POST(request: Request) {
       ? modelo
       : 'gemini-1.5-flash';
 
+    // 1. Forçar Response em JSON
     const generativeModel = genAI.getGenerativeModel({
       model: modeloEscolhido,
       generationConfig: {
         responseMimeType: 'application/json',
         temperature: 0.15,
+        maxOutputTokens: 8192,
       },
     });
 
@@ -230,25 +232,110 @@ Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, sem nenhum texto 
       },
     };
 
-    const result = await generativeModel.generateContent([
-      promptEngenharia,
-      imagePart,
-    ]);
+    // 2. Tratamento de Exceções (Try/Catch) envolvendo toda a chamada generateContent
+    let result;
+    try {
+      console.log(`[API ANALISAR-PLANTA] Enviando imagem (${resolvedMimeType}) para modelo ${modeloEscolhido}...`);
+      result = await generativeModel.generateContent([
+        promptEngenharia,
+        imagePart,
+      ]);
+    } catch (apiError: any) {
+      // 4. Log de Servidor: Mostra no terminal o exato erro caso a API do Google retorne falha
+      console.log('====================================================');
+      console.log('[BACKEND GEMINI ERROR] A API do Google retornou falha:');
+      console.log('Status HTTP:', apiError?.status || 'N/A');
+      console.log('Mensagem de Erro:', apiError?.message || String(apiError));
+      if (apiError?.errorDetails) {
+        console.log('Error Details:', JSON.stringify(apiError.errorDetails, null, 2));
+      }
+      console.log('====================================================');
 
-    const response = await result.response;
-    let rawText = response.text().trim();
+      const msgErro = apiError?.message || String(apiError);
+      let explicacaoAmigavel = msgErro;
 
-    // Remove eventuais blocos markdown ```json ... ```
-    if (rawText.startsWith('```json')) {
-      rawText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (rawText.startsWith('```')) {
-      rawText = rawText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      if (
+        msgErro.includes('API_KEY_SERVICE_BLOCKED') ||
+        msgErro.includes('blocked') ||
+        msgErro.includes('Permission denied') ||
+        msgErro.includes('ACCESS_DENIED')
+      ) {
+        explicacaoAmigavel =
+          'Acesso negado à API do Gemini (403: Permission denied / ACCESS_DENIED). A "Generative Language API" não está autorizada para esta chave ou projeto. Acesse https://aistudio.google.com/app/apikey para gerar uma chave direta do Google AI Studio com a API habilitada, e atualize o GEMINI_API_KEY no arquivo .env.local.';
+      } else if (msgErro.includes('API_KEY_INVALID') || msgErro.includes('not valid') || msgErro.includes('API key not valid')) {
+        explicacaoAmigavel =
+          'A chave GEMINI_API_KEY configurada no .env.local não é válida. Verifique e atualize no Google AI Studio (aistudio.google.com).';
+      } else if (msgErro.includes('RESOURCE_EXHAUSTED') || msgErro.includes('429') || msgErro.includes('quota')) {
+        explicacaoAmigavel =
+          'Limite de cota de requisições excedido na API Gemini. Aguarde alguns instantes antes de tentar novamente.';
+      }
+
+      return NextResponse.json(
+        {
+          sucesso: false,
+          erro: explicacaoAmigavel,
+        },
+        { status: 500 }
+      );
     }
 
-    const parsedJson = JSON.parse(rawText);
+    // Extração do texto de resposta com proteção
+    let rawText = '';
+    try {
+      const response = await result.response;
+      rawText = response.text() || '';
+    } catch (textErr: any) {
+      console.log('[BACKEND GEMINI ERROR] Falha ao extrair texto da resposta:', textErr?.message || textErr);
+      return NextResponse.json(
+        {
+          sucesso: false,
+          erro: 'A resposta do Gemini não pôde ser lida (possível bloqueio de segurança ou retorno vazio).',
+        },
+        { status: 500 }
+      );
+    }
+
+    console.log('[API ANALISAR-PLANTA] Resposta recebida do Gemini. Caracteres:', rawText.length);
+
+    // 3. Validação do Retorno: remova manualmente eventuais crases de markdown do texto usando .replace(/```json/g, "").replace(/```/g, "")
+    let textoLimpo = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    // Extrai o objeto JSON válido delimitado por { e } caso haja texto antes ou depois
+    const primeiroColchete = textoLimpo.indexOf('{');
+    const ultimoColchete = textoLimpo.lastIndexOf('}');
+    if (primeiroColchete !== -1 && ultimoColchete !== -1 && ultimoColchete >= primeiroColchete) {
+      textoLimpo = textoLimpo.substring(primeiroColchete, ultimoColchete + 1);
+    }
+
+    let parsedJson: any;
+    try {
+      parsedJson = JSON.parse(textoLimpo);
+    } catch (parseError: any) {
+      console.log('====================================================');
+      console.log('[BACKEND JSON PARSE ERROR] Falha ao interpretar JSON retornado pela IA:');
+      console.log('Erro de parse:', parseError?.message || parseError);
+      console.log('Texto bruto recebido (primeiros 300 caracteres):', textoLimpo.substring(0, 300));
+      console.log('====================================================');
+
+      return NextResponse.json(
+        {
+          sucesso: false,
+          erro: 'O modelo de inteligência artificial gerou uma resposta incompleta ou inválida. Tente reenviar a imagem.',
+          textoRecebido: textoLimpo.substring(0, 400),
+        },
+        { status: 500 }
+      );
+    }
 
     if (!parsedJson.dadosPlanta || !Array.isArray(parsedJson.itensGerados)) {
-      throw new Error('A resposta do modelo Gemini não contém a estrutura esperada de engenharia.');
+      console.log('[BACKEND JSON ERROR] Estrutura JSON recebida não possui dadosPlanta ou itensGerados válidos.');
+      return NextResponse.json(
+        {
+          sucesso: false,
+          erro: 'A resposta da IA não contém a estrutura esperada de matriz de custos (dadosPlanta/itensGerados).',
+        },
+        { status: 500 }
+      );
     }
 
     // Validação e normalização dos itens gerados
@@ -312,17 +399,18 @@ Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, sem nenhum texto 
 
     return NextResponse.json(respostaFinal);
   } catch (error: any) {
-    console.error('Erro na chamada da API Gemini Vision:', error);
-
     const mensagemErro =
       error?.message ||
-      (typeof error === 'string' ? error : 'Falha desconhecida ao analisar planta com Gemini Vision');
+      (typeof error === 'string' ? error : 'Falha desconhecida ao processar requisição');
+
+    console.log('====================================================');
+    console.log('[ERRO GERAL NO BACKEND /api/analisar-planta]:', mensagemErro);
+    console.log('====================================================');
 
     return NextResponse.json(
       {
         sucesso: false,
-        erro: `Falha na integração com Gemini Vision: ${mensagemErro}`,
-        detalhes: error?.stack || error?.toString(),
+        erro: `Falha na requisição: ${mensagemErro}`,
       },
       { status: 500 }
     );

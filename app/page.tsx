@@ -711,7 +711,12 @@ export default function DashboardPage() {
         }),
       });
 
-      const data: AnalisePlantaResponse = await response.json();
+      let data: AnalisePlantaResponse;
+      try {
+        data = await response.json();
+      } catch (jsonErr) {
+        throw new Error('O servidor backend retornou uma resposta inválida ou vazia. Verifique o console do terminal para mais detalhes.');
+      }
 
       if (!response.ok || !data.sucesso) {
         throw new Error(data.erro || 'Falha ao processar a planta com o modelo de inteligência artificial Gemini Vision.');
