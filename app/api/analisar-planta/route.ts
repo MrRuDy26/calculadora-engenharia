@@ -25,7 +25,7 @@ export interface PlantaItemGerado {
 
 export interface AnalisePlantaResponse {
   sucesso: boolean;
-  motorUtilizado: 'gemini-1.5-flash' | 'gemini-1.5-pro' | 'gemini-vision';
+  motorUtilizado: 'gemini-3.6-flash' | 'gemini-3.8-flash' | 'gemini-3.5-flash' | string;
   dadosPlanta: {
     areaDetectadaM2: number;
     perimetroEstimadoM: number;
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       mimeType = 'image/png',
       areaEstimada,
       apiKey: apiKeyOverride,
-      modelo = 'gemini-1.5-flash',
+      modelo = 'gemini-3.6-flash',
     } = body;
 
     // 1. Obtenção da chave de API
@@ -117,10 +117,14 @@ export async function POST(request: Request) {
     // 3. Inicialização real do Google Generative AI SDK
     const genAI = new GoogleGenerativeAI(geminiKey.trim());
     
-    // Suporte prioritário ao gemini-1.5-flash conforme solicitado
-    const modeloEscolhido = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'].includes(modelo)
-      ? modelo
-      : 'gemini-1.5-flash';
+    // Suporte prioritário à família moderna de modelos Gemini Flash (gemini-3.6-flash / gemini-3.8-flash)
+    const modelosValidos = [
+      'gemini-3.6-flash',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-3.7-flash',
+    ];
+    const modeloEscolhido = modelosValidos.includes(modelo) ? modelo : 'gemini-3.6-flash';
 
     // 1. Forçar Response em JSON
     const generativeModel = genAI.getGenerativeModel({
