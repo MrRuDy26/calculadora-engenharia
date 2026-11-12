@@ -40,6 +40,8 @@ export interface AnalisePlantaResponse {
       portaBalcao: number;
       janelasQuartoSala: number;
       janelaMaximAr: number;
+      totalPortas?: number;
+      totalJanelas?: number;
     };
     observacoesEngenharia: string[];
   };
@@ -138,51 +140,23 @@ export async function POST(request: Request) {
       },
     });
 
-    // 4. Prompt de Engenharia Civil e Visão Computacional
+    // 4. Prompt de Extração Neutra de Geometria e Visão Computacional (Fase 1)
     const promptEngenharia = `
-Você é um Engenheiro Civil Sênior especialista em Orçamentos Paramétricos e Construção Mista (Madeira e Concreto).
-Sua missão é realizar a LEITURA VISUAL DETALHADA E REAL DA PLANTA BAIXA fornecida nesta imagem.
+Você é um Especialista em Visão Computacional e Arquitetura/Engenharia.
+Sua missão é realizar a EXTRAÇÃO PURA DA GEOMETRIA ESPACIAL DA PLANTA BAIXA fornecida nesta imagem.
 
-Examine atentamente o desenho técnico, as cotas métricas (largura, comprimento), os nomes dos cômodos, as paredes e as aberturas de portas e janelas.
-${areaEstimada ? `(Área de referência inicial informada pelo usuário: ${areaEstimada} m²)` : ''}
+Examine atentamente o desenho técnico, as cotas métricas (largura, comprimento), os nomes dos cômodos, as divisórias e as aberturas de portas e janelas.
+${areaEstimada ? `(Área de referência inicial estimada: ${areaEstimada} m²)` : ''}
 
-REGRAS TÉCNICAS OBRIGATÓRIAS QUE VOCÊ DEVE APLICAR NA EXTRAÇÃO:
+REGRAS DE EXTRAÇÃO GEOMÉTRICA PURA (SEM ATRELAR MATERIAIS):
+1. Detecte a Área Útil Real em m² (com base nas cotas ou escala gráfica).
+2. Estime o Perímetro Externo total da edificação em metros lineares.
+3. Identifique todos os cômodos presentes (Sala, Quarto, Cozinha, Varanda, etc.) com suas metragens.
+4. Localize especificamente o Banheiro / Área Úmida e informe sua área em m² e a metragem estimada de suas paredes em m².
+5. Conte com exatidão as aberturas: portas (social, internas, correr/balcão) e janelas (quarto, sala, maxim-ar/banheiro).
+6. Liste observações técnicas puramente geométricas da planta.
 
-1. GEOMETRIA REAL:
-   - Detecte a área útil real em m² a partir das dimensões ou proporção da planta.
-   - Calcule o perímetro externo total da edificação em metros.
-   - Liste todos os cômodos detectados com suas respectivas metragens estimadas.
-
-2. ÁREAS ÚMIDAS (BANHEIRO / BOX):
-   - Localize o(s) banheiro(s) na planta.
-   - É REGRA MANDATÓRIA DE ENGENHARIA: todas as paredes do banheiro e do box molhado NÃO podem ser de madeira para evitar apodrecimento por umidade e vapor. Devem ser executadas em ALVENARIA CONVENCIONAL (blocos ou tijolos cerâmicos 8 furos, argamassa com aditivo impermeabilizante e revestimento cerâmico/porcelanato no piso e paredes do box).
-   - Estime a área de piso do banheiro e a área de paredes de alvenaria em m².
-
-3. FUNDAÇÃO RADIER (CONCRETO ARMADO):
-   - Volume de Concreto Usinado FCK 25 MPa = Área Útil × 0.10m (espessura) × 1.10 (10% de folga técnica para nivelamento do solo).
-   - Malha de Aço Soldada Nervurada POP Q138 (4,2mm a cada 10cm) = Área Útil × 1.15 (15% de transpasse de armadura conforme NBR 6118).
-   - Lona Plástica Preta 200 micras = Área Útil × 1.20 (20% de transpasse e dobras perimétricas contra umidade do solo).
-   - Fôrmas e Caixaria em tábuas de pinus/eucalipto 20cm no perímetro externo (+10%).
-
-4. INFRAESTRUTURA HIDRÁULICA E ESGOTO:
-   - Tubulações de esgoto sanitário PVC (100mm para vaso, 75mm/50mm/40mm para caixas sifonadas, pia de banheiro e pia de cozinha).
-   - Tubulações de água fria e água quente em PPR / CPVC soldáveis e registros de pressão/gaveta.
-
-5. ESTRUTURA DE MADEIRA & PAREDES SECAS:
-   - Calcule a área líquida de paredes de madeira (descontando as paredes em alvenaria do banheiro e vãos de esquadrias).
-   - É REGRA MANDATÓRIA: Aplique OBRIGATORIAMENTE 10% DE MARGEM TÉCNICA DE PERDA sobre a metragem de tábuas macho-fêmea em Pinus Autoclavado CCA (devido a cortes em obra).
-   - Dimensione pilares estruturais de pinus autoclavado 12x12cm e vigas/terças de cobertura 6x16cm (+10% perda).
-   - Conectores metálicos e parafusos estruturais galvanizados a fogo.
-
-6. ESQUADRIAS DETECTADAS:
-   - Conte exatamente as portas (porta social de entrada, portas de giro internas, porta-balcão de correr) e janelas (janelas de quarto/sala e maxim-ar do banheiro) visíveis na planta baixa.
-   - Inclua kit de fixação elástica com espuma expansiva PU e selante PU40 flexível (para absorver a dilatação natural da madeira sem trincar vidros).
-
-7. COBERTURA TERMOACÚSTICA:
-   - Telhas sanduíche galvalume com núcleo PIR 30mm trapezoidal (área inclinada + beirais de 60cm). Dispensa caibros intermediários.
-
-VALORES DE MERCADO EM REAIS (BRL):
-Atribua valores brutos e descontos realistas baseados na tabela SINAPI e preços médios de insumos para obras de chalés. O valorLiquido deve ser exatamente (valorBruto - desconto).
+ATENÇÃO: NÃO imponha nem atrele nenhum material ou método construtivo pré-definido (não dite concreto, alvenaria ou madeira). Apenas extraia a geometria pura.
 
 FORMATO EXCLUSIVO DE RESPOSTA (JSON):
 Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, sem nenhum texto antes ou depois:
@@ -195,40 +169,27 @@ Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, sem nenhum texto 
     "perimetroEstimadoM": 27.40,
     "comodosDetectados": [
       "Quarto / Mezanino",
-      "Sala de Estar Integrada",
+      "Sala Integrada",
       "Cozinha Americana",
-      "Banheiro Social (Alvenaria)"
+      "Banheiro"
     ],
     "areaBanheiroM2": 4.50,
-    "paredeAlvenariaBanheiroM2": 18.50,
+    "paredeBanheiroM2": 18.50,
     "esquadriasDetectadas": {
       "portasGiro": 2,
       "portaSocial": 1,
       "portaBalcao": 1,
       "janelasQuartoSala": 2,
-      "janelaMaximAr": 1
+      "janelaMaximAr": 1,
+      "totalPortas": 4,
+      "totalJanelas": 3
     },
-    "observacoesEngenharia": [
-      "Planta lida com sucesso...",
-      "..."
+    "observacoesGeometria": [
+      "Geometria retangular aproximada de 5,50m x 8,20m",
+      "Banheiro posicionado na lateral posterior com área de 4,50m²",
+      "Total de 4 portas e 3 janelas catalogadas"
     ]
-  },
-  "itensGerados": [
-    {
-      "id": "item-1",
-      "codigo": "1.1",
-      "descricao": "Concreto Usinado FCK 25 MPa c/ Brita 1 (Esp. 10cm + 10% folga)",
-      "categoria": "Fundação",
-      "unidade": "m³",
-      "quantidade": 4.96,
-      "aplicarMargemPerda": true,
-      "status": "Em Cotação",
-      "valorBruto": 2232.00,
-      "desconto": 150.00,
-      "valorLiquido": 2082.00,
-      "observacoes": "Laje radier monolítica calculada para a área da planta..."
-    }
-  ]
+  }
 }
 `;
 
@@ -335,49 +296,71 @@ Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, sem nenhum texto 
       );
     }
 
-    if (!parsedJson.dadosPlanta || !Array.isArray(parsedJson.itensGerados)) {
-      console.log('[BACKEND JSON ERROR] Estrutura JSON recebida não possui dadosPlanta ou itensGerados válidos.');
+    if (!parsedJson.dadosPlanta) {
+      console.log('[BACKEND JSON ERROR] Estrutura JSON recebida não possui dadosPlanta válidos.');
       return NextResponse.json(
         {
           sucesso: false,
-          erro: 'A resposta da IA não contém a estrutura esperada de matriz de custos (dadosPlanta/itensGerados).',
+          erro: 'A resposta da IA não contém os dados geométricos esperados da planta (dadosPlanta).',
         },
         { status: 500 }
       );
     }
 
-    // Validação e normalização dos itens gerados
-    const itensValidados: PlantaItemGerado[] = parsedJson.itensGerados.map((item: any, idx: number) => {
-      const bruto = Number(item.valorBruto) || 0;
-      const desc = Number(item.desconto) || 0;
-      const liq = Math.max(0, bruto - desc);
-
-      return {
-        id: item.id || `ai-${Date.now()}-${idx + 1}`,
-        codigo: item.codigo || `${(idx + 1).toFixed(1)}`,
-        descricao: String(item.descricao || 'Item de Engenharia'),
-        categoria: item.categoria || 'Outros',
-        unidade: item.unidade || 'un',
-        quantidade: Number(item.quantidade) || 1,
-        aplicarMargemPerda: Boolean(item.aplicarMargemPerda),
-        status: item.status || 'Em Cotação',
-        valorBruto: Number(bruto.toFixed(2)),
-        desconto: Number(desc.toFixed(2)),
-        valorLiquido: Number(liq.toFixed(2)),
-        observacoes: String(item.observacoes || ''),
-      };
-    });
-
-    const totalBruto = itensValidados.reduce((acc, it) => acc + it.valorBruto, 0);
-    const economiaTotal = itensValidados.reduce((acc, it) => acc + it.desconto, 0);
-    const custoTotal = itensValidados.reduce((acc, it) => acc + it.valorLiquido, 0);
     const areaDetectada =
       Number(parsedJson.areaTotalDetectada) ||
       Number(parsedJson.dadosPlanta?.areaTotalDetectada) ||
       Number(parsedJson.dadosPlanta?.areaDetectadaM2) ||
-      areaEstimada ||
-      45.10;
+      Number(areaEstimada) ||
+      0;
+
+    const esquadriasDetectadas = parsedJson.dadosPlanta?.esquadriasDetectadas || {};
+    const totalPortas =
+      Number(esquadriasDetectadas.totalPortas) ||
+      ((Number(esquadriasDetectadas.portasGiro) || 0) +
+        (Number(esquadriasDetectadas.portaSocial) || 0) +
+        (Number(esquadriasDetectadas.portaBalcao) || 0)) ||
+      0;
+    const totalJanelas =
+      Number(esquadriasDetectadas.totalJanelas) ||
+      ((Number(esquadriasDetectadas.janelasQuartoSala) || 0) +
+        (Number(esquadriasDetectadas.janelaMaximAr) || 0)) ||
+      0;
+
+    // Validação de itens caso existam
+    const itensValidados: PlantaItemGerado[] = Array.isArray(parsedJson.itensGerados)
+      ? parsedJson.itensGerados.map((item: any, idx: number) => {
+          const bruto = Number(item.valorBruto) || 0;
+          const desc = Number(item.desconto) || 0;
+          const liq = Math.max(0, bruto - desc);
+
+          return {
+            id: item.id || `ai-${Date.now()}-${idx + 1}`,
+            codigo: item.codigo || `${(idx + 1).toFixed(1)}`,
+            descricao: String(item.descricao || 'Item de Engenharia'),
+            categoria: item.categoria || 'Outros',
+            unidade: item.unidade || 'un',
+            quantidade: Number(item.quantidade) || 1,
+            aplicarMargemPerda: Boolean(item.aplicarMargemPerda),
+            status: item.status || 'Em Cotação',
+            valorBruto: Number(bruto.toFixed(2)),
+            desconto: Number(desc.toFixed(2)),
+            valorLiquido: Number(liq.toFixed(2)),
+            observacoes: String(item.observacoes || ''),
+          };
+        })
+      : [];
+
+    const totalBruto = itensValidados.reduce((acc, it) => acc + it.valorBruto, 0);
+    const economiaTotal = itensValidados.reduce((acc, it) => acc + it.desconto, 0);
+    const custoTotal = itensValidados.reduce((acc, it) => acc + it.valorLiquido, 0);
     const custoPorM2 = areaDetectada > 0 ? Number((custoTotal / areaDetectada).toFixed(2)) : 0;
+
+    const observacoes = Array.isArray(parsedJson.dadosPlanta.observacoesGeometria)
+      ? parsedJson.dadosPlanta.observacoesGeometria
+      : Array.isArray(parsedJson.dadosPlanta.observacoesEngenharia)
+      ? parsedJson.dadosPlanta.observacoesEngenharia
+      : ['Geometria espacial identificada com sucesso pela IA.'];
 
     const respostaFinal: AnalisePlantaResponse = {
       sucesso: true,
@@ -389,19 +372,18 @@ Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, sem nenhum texto 
         perimetroEstimadoM: Number(parsedJson.dadosPlanta.perimetroEstimadoM) || 0,
         comodosDetectados: Array.isArray(parsedJson.dadosPlanta.comodosDetectados)
           ? parsedJson.dadosPlanta.comodosDetectados
-          : [],
-        areaBanheiroM2: Number(parsedJson.dadosPlanta.areaBanheiroM2) || 0,
-        paredeAlvenariaBanheiroM2: Number(parsedJson.dadosPlanta.paredeAlvenariaBanheiroM2) || 0,
-        esquadriasDetectadas: parsedJson.dadosPlanta.esquadriasDetectadas || {
-          portasGiro: 0,
-          portaSocial: 0,
-          portaBalcao: 0,
-          janelasQuartoSala: 0,
-          janelaMaximAr: 0,
+          : ['Espaço Integrado', 'Dormitório', 'Banheiro'],
+        areaBanheiroM2: Number(parsedJson.dadosPlanta.areaBanheiroM2) || 4.5,
+        paredeAlvenariaBanheiroM2:
+          Number(parsedJson.dadosPlanta.paredeBanheiroM2 || parsedJson.dadosPlanta.paredeAlvenariaBanheiroM2) || 16,
+        esquadriasDetectadas: {
+          portasGiro: Number(esquadriasDetectadas.portasGiro) || 0,
+          portaSocial: Number(esquadriasDetectadas.portaSocial) || 0,
+          portaBalcao: Number(esquadriasDetectadas.portaBalcao) || 0,
+          janelasQuartoSala: Number(esquadriasDetectadas.janelasQuartoSala) || 0,
+          janelaMaximAr: Number(esquadriasDetectadas.janelaMaximAr) || 0,
         },
-        observacoesEngenharia: Array.isArray(parsedJson.dadosPlanta.observacoesEngenharia)
-          ? parsedJson.dadosPlanta.observacoesEngenharia
-          : [],
+        observacoesEngenharia: observacoes,
       },
       itensGerados: itensValidados,
       kpisEstimados: {

@@ -122,6 +122,19 @@ export default function DashboardPage() {
   const [etapaAnaliseIA, setEtapaAnaliseIA] = useState<string>('');
   const [resultadoAnaliseIA, setResultadoAnaliseIA] = useState<AnalisePlantaResponse | null>(null);
   const [modalResultadoAberto, setModalResultadoAberto] = useState(false);
+
+  // =========================================================================
+  // FASE 2: ESTADOS DE DECISÃO CONSTRUTIVA DO ENGENHEIRO (PAINEL DINÂMICO)
+  // =========================================================================
+  const [escolhaFundacao, setEscolhaFundacao] = useState<string>('');
+  const [escolhaEstruturaSeca, setEscolhaEstruturaSeca] = useState<string>('');
+  const [escolhaEstruturaMolhada, setEscolhaEstruturaMolhada] = useState<string>('');
+  const [escolhaPiso, setEscolhaPiso] = useState<string>('');
+  const [isGerandoOrcamento, setIsGerandoOrcamento] = useState(false);
+
+  const todasEscolhasFeitas = Boolean(
+    escolhaFundacao && escolhaEstruturaSeca && escolhaEstruturaMolhada && escolhaPiso
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 1. Carregamento inicial do LocalStorage
@@ -519,6 +532,10 @@ export default function DashboardPage() {
       setImagemPlantaBase64(null);
       setNomeArquivoPlanta('');
       setResultadoAnaliseIA(null);
+      setEscolhaFundacao('');
+      setEscolhaEstruturaSeca('');
+      setEscolhaEstruturaMolhada('');
+      setEscolhaPiso('');
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -704,6 +721,82 @@ export default function DashboardPage() {
     }
 
     setModalResultadoAberto(false);
+  };
+
+  // =========================================================================
+  // FASE 3: MOTOR DE CÁLCULO BASEADO EM GEOMETRIA E ESCOLHAS (/api/orcamento)
+  // =========================================================================
+  const handleGerarOrcamentoDecisoes = async () => {
+    if (!todasEscolhasFeitas) {
+      alert('Por favor, selecione todas as 4 opções construtivas (Fundação, Estrutura Seca, Banheiro e Piso) antes de gerar o orçamento.');
+      return;
+    }
+
+    if (areaUtil <= 0) {
+      alert('Defina a Área Útil (m²) no cabeçalho ou faça o upload da planta para que a IA extraia as dimensões.');
+      return;
+    }
+
+    setIsGerandoOrcamento(true);
+    try {
+      const totalPortas =
+        Number(resultadoAnaliseIA?.dadosPlanta?.esquadriasDetectadas?.totalPortas) ||
+        ((Number(resultadoAnaliseIA?.dadosPlanta?.esquadriasDetectadas?.portasGiro) || 0) +
+          (Number(resultadoAnaliseIA?.dadosPlanta?.esquadriasDetectadas?.portaSocial) || 0) +
+          (Number(resultadoAnaliseIA?.dadosPlanta?.esquadriasDetectadas?.portaBalcao) || 0)) ||
+        3;
+
+      const totalJanelas =
+        Number(resultadoAnaliseIA?.dadosPlanta?.esquadriasDetectadas?.totalJanelas) ||
+        ((Number(resultadoAnaliseIA?.dadosPlanta?.esquadriasDetectadas?.janelasQuartoSala) || 0) +
+          (Number(resultadoAnaliseIA?.dadosPlanta?.esquadriasDetectadas?.janelaMaximAr) || 0)) ||
+        3;
+
+      const res = await fetch('/api/orcamento', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          geometria: {
+            areaTotal: areaUtil,
+            perimetro: resultadoAnaliseIA?.dadosPlanta?.perimetroEstimadoM || parametrosGeometricos.perimetro,
+            areaBanheiro: resultadoAnaliseIA?.dadosPlanta?.areaBanheiroM2,
+            paredeBanheiro: resultadoAnaliseIA?.dadosPlanta?.paredeAlvenariaBanheiroM2,
+            esquadrias: {
+              ...resultadoAnaliseIA?.dadosPlanta?.esquadriasDetectadas,
+              totalPortas,
+              totalJanelas,
+            },
+            comodos: resultadoAnaliseIA?.dadosPlanta?.comodosDetectados,
+          },
+          escolhas: {
+            fundacao: escolhaFundacao,
+            estruturaSeca: escolhaEstruturaSeca,
+            estruturaMolhada: escolhaEstruturaMolhada,
+            piso: escolhaPiso,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.sucesso) {
+        throw new Error(data.erro || 'Falha ao processar orçamento paramétrico.');
+      }
+
+      salvarItens(data.itens);
+
+      // Scroll suave até a tabela de orçamento
+      setTimeout(() => {
+        const el = document.getElementById('secao-tabela-orcamento');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
+    } catch (err: any) {
+      console.error('Erro ao gerar orçamento por decisões:', err);
+      alert(err?.message || 'Erro ao gerar o orçamento.');
+    } finally {
+      setIsGerandoOrcamento(false);
+    }
   };
 
   // =========================================================================
@@ -1015,10 +1108,10 @@ export default function DashboardPage() {
               </div>
               <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                 <Scan className="w-5 h-5 text-emerald-400" />
-                Leitura Inteligente de Planta Baixa & Orçamento Automático
+                Leitura e Extração de Geometria da Planta Baixa
               </h2>
               <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                Carregue a planta do chalé (PNG, JPG, PDF) para extrair geometria, isolar o banheiro em alvenaria convencional, calcular o Radier e dimensionar o madeiramento com +10% de perda.
+                Carregue a planta para extrair a geometria e inicie a orçamentação.
               </p>
             </div>
 
@@ -1125,7 +1218,7 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {/* Painel Lateral: Critérios Técnicos da Análise e Status */}
+            {/* Painel Lateral: Extração Neutra de Geometria (Fase 1) */}
             <div className="lg:col-span-7 flex flex-col justify-between bg-slate-950/60 border border-slate-800/80 rounded-2xl p-5">
               
               {isAnalisandoPlanta ? (
@@ -1135,9 +1228,9 @@ export default function DashboardPage() {
                     <Cpu className="w-6 h-6 text-emerald-400 absolute inset-0 m-auto animate-pulse" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">Analisando Planta Baixa com IA</h4>
+                    <h4 className="text-sm font-bold text-white">Extraindo Geometria Espacial da Planta com IA</h4>
                     <p className="text-xs text-emerald-400 font-mono mt-1 animate-pulse">
-                      {etapaAnaliseIA}
+                      {etapaAnaliseIA || 'Processando cotas métricas, divisórias e aberturas...'}
                     </p>
                   </div>
                   <div className="w-full max-w-sm bg-slate-900 h-1.5 rounded-full overflow-hidden">
@@ -1149,109 +1242,121 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                     <div>
                       <span className="text-[10px] font-mono uppercase text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                        {resultadoAnaliseIA.motorUtilizado === 'gemini-vision' ? 'Gemini Vision Ativo' : 'Motor Paramétrico NBR Ativo'}
+                        Fase 1: Geometria Espacial Extraída
                       </span>
-                      <h4 className="text-sm font-bold text-white mt-1">
+                      <h4 className="text-sm sm:text-base font-bold text-white mt-1">
                         Planta Processada: {resultadoAnaliseIA.dadosPlanta.areaDetectadaM2.toFixed(2)} m² Detectados
                       </h4>
                     </div>
                     <div className="text-right">
-                      <span className="text-xs font-mono text-slate-400 block">Orçamento Gerado</span>
-                      <span className="text-base font-extrabold text-emerald-400 font-mono">
-                        {formatMoney(resultadoAnaliseIA.kpisEstimados.custoTotal)}
+                      <span className="text-xs font-mono text-slate-400 block">Perímetro Total</span>
+                      <span className="text-sm font-extrabold text-indigo-400 font-mono">
+                        {resultadoAnaliseIA.dadosPlanta.perimetroEstimadoM?.toFixed(2) || '—'} m
                       </span>
                     </div>
                   </div>
 
-                  {/* Badges de Cômodos e Áreas Críticas */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                  {/* Cards de Geometria Pura (Sem Atrelar Material) */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                       <span className="text-[10px] text-slate-400 block uppercase font-mono">Área Molhada</span>
                       <span className="text-xs font-bold text-rose-400 block mt-0.5">
-                        Banheiro em Alvenaria
+                        Banheiro: {resultadoAnaliseIA.dadosPlanta.areaBanheiroM2?.toFixed(2) || '4.50'} m²
                       </span>
                       <span className="text-[10px] text-slate-500">
-                        {resultadoAnaliseIA.dadosPlanta.paredeAlvenariaBanheiroM2} m² alvenaria
+                        {resultadoAnaliseIA.dadosPlanta.paredeAlvenariaBanheiroM2 || 16} m² de paredes
                       </span>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                      <span className="text-[10px] text-slate-400 block uppercase font-mono">Madeiramento Seco</span>
-                      <span className="text-xs font-bold text-amber-400 block mt-0.5">
-                        Pinus CCA (+10% perda)
-                      </span>
-                      <span className="text-[10px] text-slate-500">Paredes e vigamento</span>
-                    </div>
-
-                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 col-span-2 sm:col-span-1">
+                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                       <span className="text-[10px] text-slate-400 block uppercase font-mono">Aberturas Catalogadas</span>
                       <span className="text-xs font-bold text-blue-400 block mt-0.5">
-                        {resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.portasGiro + resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.portaSocial + resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.portaBalcao} Portas • {resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.janelasQuartoSala + resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.janelaMaximAr} Janelas
+                        {(resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.portasGiro || 0) +
+                          (resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.portaSocial || 0) +
+                          (resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.portaBalcao || 0) ||
+                          resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.totalPortas || 0} Portas, {(resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.janelasQuartoSala || 0) +
+                          (resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.janelaMaximAr || 0) ||
+                          resultadoAnaliseIA.dadosPlanta.esquadriasDetectadas.totalJanelas || 0} Janelas
                       </span>
-                      <span className="text-[10px] text-slate-500">Alumínio e madeira</span>
+                      <span className="text-[10px] text-slate-500">Vãos de esquadrias</span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 col-span-2 sm:col-span-1">
+                      <span className="text-[10px] text-slate-400 block uppercase font-mono">Área Seca Estimada</span>
+                      <span className="text-xs font-bold text-emerald-400 block mt-0.5">
+                        {Math.max(0, areaUtil - (resultadoAnaliseIA.dadosPlanta.areaBanheiroM2 || 4.5)).toFixed(2)} m²
+                      </span>
+                      <span className="text-[10px] text-slate-500">Quarto, sala e convívio</span>
                     </div>
                   </div>
 
-                  {/* Lista de Observações Construtivas Detectadas */}
-                  <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800/80 space-y-1.5 max-h-36 overflow-y-auto">
-                    <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">
-                      Diretrizes Técnicas de Engenharia Aplicadas:
-                    </span>
-                    {resultadoAnaliseIA.dadosPlanta.observacoesEngenharia.map((obs, idx) => (
-                      <p key={idx} className="text-xs text-slate-300 flex items-start gap-1.5">
-                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                        <span>{obs}</span>
-                      </p>
-                    ))}
-                  </div>
+                  {/* Cômodos Identificados de Forma Neutra */}
+                  {resultadoAnaliseIA.dadosPlanta.comodosDetectados && resultadoAnaliseIA.dadosPlanta.comodosDetectados.length > 0 && (
+                    <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800/80">
+                      <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block mb-1.5">
+                        Compartimentação e Cômodos Detectados:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {resultadoAnaliseIA.dadosPlanta.comodosDetectados.map((comodo, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 bg-slate-800/90 text-slate-200 text-xs rounded-lg border border-slate-700/80 font-medium"
+                          >
+                            {comodo}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-                  {/* Ações de Aplicação do Orçamento */}
-                  <div className="flex flex-wrap items-center gap-2 pt-2">
-                    <button
-                      onClick={() => handleAplicarItensIA('substituir')}
-                      className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-md text-center"
+                  {/* Banner de Direcionamento para Fase 2 */}
+                  <div className="p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                    <span className="text-xs text-indigo-300 font-medium">
+                      Geometria capturada com sucesso. Prossiga para o Painel de Escolha do Usuário abaixo.
+                    </span>
+                    <a
+                      href="#painel-decisoes"
+                      className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 px-3.5 py-1.5 rounded-lg transition shrink-0"
                     >
-                      Substituir Orçamento Atual ({resultadoAnaliseIA.itensGerados.length} Itens)
-                    </button>
-                    <button
-                      onClick={() => handleAplicarItensIA('acrescentar')}
-                      className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition cursor-pointer"
-                    >
-                      + Acrescentar aos Existentes
-                    </button>
+                      Ir para Decisões ↓
+                    </a>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">
-                    Regras de Engenharia que a IA Aplicará:
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono flex items-center gap-2">
+                    <Scan className="w-4 h-4 text-emerald-400" />
+                    Extração Neutra de Geometria Arquitetônica
                   </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Ao processar a planta baixa, a IA extrai estritamente as medidas físicas reais do projeto, sem engessar materiais ou impor escolhas prévias:
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
                     <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800/80">
-                      <span className="font-semibold text-emerald-400 block mb-0.5">1. Fundação Radier</span>
+                      <span className="font-semibold text-emerald-400 block mb-0.5">1. Metragens & Cotas</span>
                       <span className="text-slate-400 text-[11px] leading-tight block">
-                        Laje 10cm + 10% de folga técnica, malha de aço POP Q138 (+15% transpasse) e lona 200 micras.
+                        Cálculo da área útil real (m²) e perímetro externo total em metros lineares.
                       </span>
                     </div>
 
                     <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800/80">
-                      <span className="font-semibold text-rose-400 block mb-0.5">2. Áreas Úmidas (Banheiro)</span>
+                      <span className="font-semibold text-blue-400 block mb-0.5">2. Cômodos & Divisórias</span>
                       <span className="text-slate-400 text-[11px] leading-tight block">
-                        Isolamento das paredes do banheiro e box em <strong>alvenaria convencional</strong> para vedação contra umidade.
+                        Mapeamento de ambientes integrados, quartos e isolamento da área molhada do banheiro.
                       </span>
                     </div>
 
                     <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800/80">
-                      <span className="font-semibold text-amber-400 block mb-0.5">3. Pinus CCA (+10% Perda)</span>
+                      <span className="font-semibold text-purple-400 block mb-0.5">3. Portas & Janelas</span>
                       <span className="text-slate-400 text-[11px] leading-tight block">
-                        Aplica obrigatoriamente 10% de margem técnica de perda por recortes nas tábuas macho-fêmea e vigas.
+                        Contagem exata de esquadrias, vãos de iluminação e ventilação.
                       </span>
                     </div>
 
                     <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800/80">
-                      <span className="font-semibold text-blue-400 block mb-0.5">4. Esquadrias & Tubulações</span>
+                      <span className="font-semibold text-amber-400 block mb-0.5">4. Liberdade Construtiva</span>
                       <span className="text-slate-400 text-[11px] leading-tight block">
-                        Contagem das aberturas desenhadas, fixação com espuma PU elástica e rede de esgoto/água PPR.
+                        Você decide os sistemas de fundação, estrutura e pisos no painel interativo.
                       </span>
                     </div>
                   </div>
@@ -1264,158 +1369,175 @@ export default function DashboardPage() {
         </section>
 
         {/* ================================================================= */}
-        {/* PAINEL DE ENGENHARIA PARAMÉTRICA: BOTÕES INTELIGENTES (CONDICIONAL)*/}
+        {/* FASE 2: PAINEL DE ESCOLHA DO USUÁRIO & DECISÕES CONSTRUTIVAS     */}
         {/* ================================================================= */}
-        <section className={`bg-slate-900/80 border rounded-2xl p-5 shadow-xl backdrop-blur-md transition-all ${
-          areaUtil <= 0 ? 'border-amber-500/30' : 'border-slate-800/90'
-        }`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <section id="painel-decisoes" className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-6 shadow-xl backdrop-blur-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-800/80">
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  Módulos de Cálculo Paramétrico Automático
-                </h2>
-                {areaUtil > 0 ? (
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2.5 py-0.5 text-xs font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 rounded-md">
+                  Fase 2: Escolha dos Métodos de Engenharia
+                </span>
+                {areaUtil > 0 && (
                   <span className="px-2 py-0.5 text-xs font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md">
-                    Área: {areaUtil.toFixed(2)} m²
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 text-xs font-mono font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> Bloqueado (0 m²)
+                    Área Base: {areaUtil.toFixed(2)} m²
                   </span>
                 )}
               </div>
+              <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <Layers className="w-5 h-5 text-indigo-400" />
+                Painel de Decisões Construtivas (Escolha do Engenheiro)
+              </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                {areaUtil > 0
-                  ? 'Clique em um módulo para dimensionar materiais, espessuras e margens de 10% com base nas dimensões calculadas.'
-                  : 'Aguardando definição da área da obra pela IA ou inserção manual para desbloquear os cálculos.'}
+                Selecione as diretrizes construtivas do chalé. O motor de cálculo utilizará a geometria e essas 4 decisões para calcular quantitativos reais.
               </p>
             </div>
 
+            {/* Indicador de Seleção */}
+            <div className="text-left sm:text-right">
+              <span className="text-xs font-mono text-slate-400 block">Progresso das Decisões</span>
+              <span className={`text-xs font-bold font-mono px-2.5 py-1 rounded-md inline-block mt-0.5 ${
+                todasEscolhasFeitas
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              }`}>
+                {[escolhaFundacao, escolhaEstruturaSeca, escolhaEstruturaMolhada, escolhaPiso].filter(Boolean).length} de 4 Decididas
+              </span>
+            </div>
+          </div>
+
+          {/* Grid com os 4 Dropdowns (Selects Obrigatórios) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-5">
+            
+            {/* 1. Fundação */}
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono flex items-center justify-between">
+                <span>1. Fundação</span>
+                {escolhaFundacao && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+              </label>
+              <select
+                value={escolhaFundacao}
+                onChange={(e) => setEscolhaFundacao(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
+              >
+                <option value="">Selecione...</option>
+                <option value="Radier de Concreto">Radier de Concreto</option>
+                <option value="Baldrame com Sapatas Isoladas">Baldrame com Sapatas Isoladas</option>
+                <option value="Estacas/Pilares de Madeira">Estacas/Pilares de Madeira</option>
+              </select>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Define a base estrutural, escavação e ancoragem mecânica.
+              </p>
+            </div>
+
+            {/* 2. Estrutura (Áreas Secas) */}
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono flex items-center justify-between">
+                <span>2. Estrutura (Áreas Secas)</span>
+                {escolhaEstruturaSeca && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+              </label>
+              <select
+                value={escolhaEstruturaSeca}
+                onChange={(e) => setEscolhaEstruturaSeca(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
+              >
+                <option value="">Selecione...</option>
+                <option value="Madeira Pinus Autoclavado CCA (+10% perda)">Madeira Pinus Autoclavado CCA (+10% perda)</option>
+                <option value="Alvenaria Convencional Estrutural">Alvenaria Convencional Estrutural</option>
+                <option value="Wood Frame">Wood Frame</option>
+              </select>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Painéis de vedação, pilares e vigamento de amarração.
+              </p>
+            </div>
+
+            {/* 3. Estrutura (Áreas Molhadas - Banheiros) */}
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono flex items-center justify-between">
+                <span>3. Banheiro (Área Molhada)</span>
+                {escolhaEstruturaMolhada && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+              </label>
+              <select
+                value={escolhaEstruturaMolhada}
+                onChange={(e) => setEscolhaEstruturaMolhada(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
+              >
+                <option value="">Selecione...</option>
+                <option value="Alvenaria Convencional">Alvenaria Convencional</option>
+                <option value="Drywall RU (Umidade)">Drywall RU (Umidade)</option>
+              </select>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Proteção contra umidade, vapor e impermeabilização do box.
+              </p>
+            </div>
+
+            {/* 4. Piso / Revestimento */}
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono flex items-center justify-between">
+                <span>4. Piso / Revestimento</span>
+                {escolhaPiso && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+              </label>
+              <select
+                value={escolhaPiso}
+                onChange={(e) => setEscolhaPiso(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
+              >
+                <option value="">Selecione...</option>
+                <option value="Assoalho de Madeira Maciça">Assoalho de Madeira Maciça</option>
+                <option value="Contrapiso + Piso Cerâmico">Contrapiso + Piso Cerâmico</option>
+                <option value="Porcelanato">Porcelanato</option>
+              </select>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Regularização de base, acabamento de piso e rejuntes.
+              </p>
+            </div>
+
+          </div>
+
+          {/* FASE 3: BOTÃO DE GERAÇÃO BASEADO NAS ESCOLHAS */}
+          <div className="mt-6 pt-5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-xs">
+              {!todasEscolhasFeitas ? (
+                <span className="flex items-center gap-1.5 text-amber-400 font-mono">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  Selecione as 4 opções acima para habilitar o cálculo.
+                </span>
+              ) : areaUtil <= 0 ? (
+                <span className="flex items-center gap-1.5 text-amber-400 font-mono">
+                  <Lock className="w-4 h-4 shrink-0" />
+                  Defina a Área Útil no topo ou processe a planta com IA para calcular.
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-emerald-400 font-mono font-medium">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  Decisões completas! Pronto para orçar para {areaUtil.toFixed(2)} m².
+                </span>
+              )}
+            </div>
+
             <button
-              onClick={gerarObraCompletaParametrica}
-              disabled={areaUtil <= 0}
-              className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-xl transition shadow-lg self-start sm:self-auto ${
-                areaUtil > 0
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 active:scale-95 cursor-pointer'
+              onClick={handleGerarOrcamentoDecisoes}
+              disabled={!todasEscolhasFeitas || isGerandoOrcamento || areaUtil <= 0}
+              className={`w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 py-3.5 text-xs sm:text-sm font-bold rounded-xl transition shadow-xl cursor-pointer ${
+                todasEscolhasFeitas && areaUtil > 0 && !isGerandoOrcamento
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50 active:scale-[0.98]'
                   : 'bg-slate-800 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60'
               }`}
             >
-              {areaUtil <= 0 ? (
+              {isGerandoOrcamento ? (
                 <>
-                  <Lock className="w-3.5 h-3.5" />
-                  Gerar Obra Completa (Bloqueado)
+                  <RefreshCw className="w-4 h-4 animate-spin text-emerald-300" />
+                  <span>Gerando Quantitativos no Backend (/api/orcamento)...</span>
                 </>
               ) : (
                 <>
-                  <Box className="w-3.5 h-3.5" />
-                  Gerar Obra Completa ({areaUtil.toFixed(2)} m²)
+                  <Sparkles className="w-4 h-4 text-emerald-300" />
+                  <span>Gerar Quantitativos Baseado nas Escolhas</span>
                 </>
               )}
             </button>
           </div>
 
-          {/* Banner de Bloqueio Condicional quando areaUtil <= 0 */}
-          {areaUtil <= 0 && (
-            <div className="mb-4 p-4 rounded-xl bg-amber-950/20 border border-amber-500/30 flex items-start sm:items-center gap-3">
-              <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400 shrink-0 border border-amber-500/20">
-                <Lock className="w-5 h-5" />
-              </div>
-              <div className="flex-1 text-xs">
-                <h4 className="font-bold text-amber-300">
-                  Módulos de Engenharia Paramétrica Bloqueados
-                </h4>
-                <p className="text-slate-300 mt-0.5 leading-relaxed">
-                  Para dimensionar a fundação radier, a volumetria de madeira e os quantitativos com margem de 10%,{' '}
-                  <strong className="text-amber-200">faça o upload da planta baixa no módulo de IA acima</strong> ou digite uma metragem válida no campo{' '}
-                  <strong className="text-amber-200">Área Útil (m²)</strong> no cabeçalho.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 ${
-            areaUtil <= 0 ? 'opacity-40 pointer-events-none select-none' : ''
-          }`}>
-            
-            {/* Módulo Radier */}
-            <button
-              onClick={gerarParametricoRadier}
-              disabled={areaUtil <= 0}
-              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-emerald-500/40 transition group text-left cursor-pointer disabled:cursor-not-allowed"
-            >
-              <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:bg-emerald-500/20">
-                <Building className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-white block group-hover:text-emerald-300">
-                  + Fundação Radier
-                </span>
-                <span className="text-[11px] text-slate-400 leading-tight block mt-0.5">
-                  Concreto 10cm (+10% folga), malha POP e lona 200 micras.
-                </span>
-              </div>
-            </button>
-
-            {/* Módulo Madeira */}
-            <button
-              onClick={gerarParametricoEstrutura}
-              disabled={areaUtil <= 0}
-              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-amber-500/40 transition group text-left cursor-pointer disabled:cursor-not-allowed"
-            >
-              <div className="p-2.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:bg-amber-500/20">
-                <Hammer className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-white block group-hover:text-amber-300">
-                  + Estrutura Madeira (+10%)
-                </span>
-                <span className="text-[11px] text-slate-400 leading-tight block mt-0.5">
-                  Pinus CCA macho-fêmea, pilares 12x12 e vigamento.
-                </span>
-              </div>
-            </button>
-
-            {/* Módulo Cobertura */}
-            <button
-              onClick={gerarParametricoCobertura}
-              disabled={areaUtil <= 0}
-              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-blue-500/40 transition group text-left cursor-pointer disabled:cursor-not-allowed"
-            >
-              <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 group-hover:bg-blue-500/20">
-                <ShieldCheck className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-white block group-hover:text-blue-300">
-                  + Cobertura Sanduíche
-                </span>
-                <span className="text-[11px] text-slate-400 leading-tight block mt-0.5">
-                  Telhas PIR termoacústicas, parafusos c/ EPDM e rufos.
-                </span>
-              </div>
-            </button>
-
-            {/* Módulo Esquadrias */}
-            <button
-              onClick={gerarParametricoEsquadrias}
-              disabled={areaUtil <= 0}
-              className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/80 hover:bg-slate-950 border border-slate-800 hover:border-purple-500/40 transition group text-left cursor-pointer disabled:cursor-not-allowed"
-            >
-              <div className="p-2.5 rounded-lg bg-purple-500/10 text-purple-300 border border-purple-500/20 group-hover:bg-purple-500/20">
-                <Box className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-white block group-hover:text-purple-300">
-                  + Esquadrias & Vedação
-                </span>
-                <span className="text-[11px] text-slate-400 leading-tight block mt-0.5">
-                  Portas, janelas em alumínio preto e espuma PU.
-                </span>
-              </div>
-            </button>
-
-          </div>
         </section>
 
         {/* ================================================================= */}
@@ -1618,7 +1740,7 @@ export default function DashboardPage() {
                       className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-lg shadow-emerald-950/40"
                     >
                       <Box className="w-4 h-4" />
-                      Calcular Obra Completa para {areaUtil.toFixed(2)} m²
+                      Gerar Orçamento Baseado nas Decisões
                     </button>
                   ) : (
                     <p className="text-xs text-slate-400 text-center">
