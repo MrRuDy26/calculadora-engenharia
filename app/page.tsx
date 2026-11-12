@@ -722,6 +722,16 @@ export default function DashboardPage() {
         throw new Error(data.erro || 'Falha ao processar a planta com o modelo de inteligência artificial Gemini Vision.');
       }
 
+      // 2. Atualiza automaticamente o estado areaUtil com a área lida pela IA (ex: 60m²)
+      const areaDetectadaIA =
+        Number(data.areaTotalDetectada) ||
+        Number(data.dadosPlanta?.areaTotalDetectada) ||
+        Number(data.dadosPlanta?.areaDetectadaM2);
+
+      if (areaDetectadaIA && areaDetectadaIA > 0) {
+        handleAtualizarArea(areaDetectadaIA);
+      }
+
       setResultadoAnaliseIA(data);
       setModalResultadoAberto(true);
     } catch (err: any) {
@@ -756,8 +766,13 @@ export default function DashboardPage() {
       observacoes: it.observacoes,
     }));
 
-    if (resultadoAnaliseIA.dadosPlanta.areaDetectadaM2) {
-      handleAtualizarArea(resultadoAnaliseIA.dadosPlanta.areaDetectadaM2);
+    const areaDetectadaIA =
+      Number(resultadoAnaliseIA.areaTotalDetectada) ||
+      Number(resultadoAnaliseIA.dadosPlanta.areaTotalDetectada) ||
+      Number(resultadoAnaliseIA.dadosPlanta.areaDetectadaM2);
+
+    if (areaDetectadaIA && areaDetectadaIA > 0) {
+      handleAtualizarArea(areaDetectadaIA);
     }
 
     if (modo === 'substituir') {
@@ -975,18 +990,21 @@ export default function DashboardPage() {
         {/* ================================================================= */}
         <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-800/80 pb-6 gap-5">
           <div>
-            <div className="flex items-center gap-2 mb-1.5">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
               <span className="px-2.5 py-0.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md flex items-center gap-1.5">
                 <Calculator className="w-3.5 h-3.5" />
                 Motor Paramétrico de Engenharia
               </span>
-              <span className="text-xs text-slate-400">• Chalés & Casas de Campo</span>
+              <span className="px-2 py-0.5 text-xs font-mono font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 rounded-md">
+                Área Calibrada: {areaUtil.toFixed(2)} m²
+              </span>
+              <span className="text-xs text-slate-400 hidden sm:inline">• Dimensionamento em Tempo Real</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
-              Calculadora de Custos de Obra
+              Calculadora de Custos de Obra — <span className="text-emerald-400 font-mono">{areaUtil.toFixed(2)} m²</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Dimensionamento em tempo real com margem técnica de 10% de perda em madeiramento e concreto.
+              Todos os parâmetros estruturais, radier e quantitativos estão calibrados dinamicamente para <strong className="text-white font-mono">{areaUtil.toFixed(2)} m²</strong>.
             </p>
           </div>
 
@@ -1452,7 +1470,7 @@ export default function DashboardPage() {
             </p>
             <p className="text-xs text-slate-400 mt-2 flex items-center gap-1.5">
               <span className="text-indigo-300 font-mono font-semibold">{areaUtil.toFixed(2)} m²</span>
-              <span>área total calibrada</span>
+              <span>área ativa {areaUtil > 0 ? `(${formatMoney(custoTotal)} ÷ ${areaUtil.toFixed(2)} m²)` : ''}</span>
             </p>
           </div>
 

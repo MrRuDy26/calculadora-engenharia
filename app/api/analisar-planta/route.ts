@@ -26,8 +26,10 @@ export interface PlantaItemGerado {
 export interface AnalisePlantaResponse {
   sucesso: boolean;
   motorUtilizado: 'gemini-3.6-flash' | 'gemini-3.8-flash' | 'gemini-3.5-flash' | string;
+  areaTotalDetectada: number;
   dadosPlanta: {
     areaDetectadaM2: number;
+    areaTotalDetectada: number;
     perimetroEstimadoM: number;
     comodosDetectados: string[];
     areaBanheiroM2: number;
@@ -186,7 +188,9 @@ FORMATO EXCLUSIVO DE RESPOSTA (JSON):
 Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, sem nenhum texto antes ou depois:
 
 {
+  "areaTotalDetectada": 45.10,
   "dadosPlanta": {
+    "areaTotalDetectada": 45.10,
     "areaDetectadaM2": 45.10,
     "perimetroEstimadoM": 27.40,
     "comodosDetectados": [
@@ -367,14 +371,21 @@ Retorne ESTRITAMENTE um objeto JSON válido no formato abaixo, sem nenhum texto 
     const totalBruto = itensValidados.reduce((acc, it) => acc + it.valorBruto, 0);
     const economiaTotal = itensValidados.reduce((acc, it) => acc + it.desconto, 0);
     const custoTotal = itensValidados.reduce((acc, it) => acc + it.valorLiquido, 0);
-    const areaDetectada = Number(parsedJson.dadosPlanta.areaDetectadaM2) || areaEstimada || 45.10;
+    const areaDetectada =
+      Number(parsedJson.areaTotalDetectada) ||
+      Number(parsedJson.dadosPlanta?.areaTotalDetectada) ||
+      Number(parsedJson.dadosPlanta?.areaDetectadaM2) ||
+      areaEstimada ||
+      45.10;
     const custoPorM2 = areaDetectada > 0 ? Number((custoTotal / areaDetectada).toFixed(2)) : 0;
 
     const respostaFinal: AnalisePlantaResponse = {
       sucesso: true,
       motorUtilizado: modeloEscolhido as any,
+      areaTotalDetectada: areaDetectada,
       dadosPlanta: {
         areaDetectadaM2: areaDetectada,
+        areaTotalDetectada: areaDetectada,
         perimetroEstimadoM: Number(parsedJson.dadosPlanta.perimetroEstimadoM) || 0,
         comodosDetectados: Array.isArray(parsedJson.dadosPlanta.comodosDetectados)
           ? parsedJson.dadosPlanta.comodosDetectados
