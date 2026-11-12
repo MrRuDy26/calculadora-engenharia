@@ -48,6 +48,8 @@ export interface DecisoesEngenharia {
   estruturaSeca: 'Madeira Pinus Autoclavado CCA (+10% perda)' | 'Alvenaria Convencional Estrutural' | 'Wood Frame' | string;
   estruturaMolhada: 'Alvenaria Convencional' | 'Drywall RU (Umidade)' | string;
   piso: 'Assoalho de Madeira Maciça' | 'Contrapiso + Piso Cerâmico' | 'Porcelanato' | string;
+  maoDeObraFase1: string;
+  maoDeObraFase2: string;
 }
 
 export interface OrcamentoDecisaoRequest {
@@ -201,11 +203,19 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!escolhas || !escolhas.fundacao || !escolhas.estruturaSeca || !escolhas.estruturaMolhada || !escolhas.piso) {
+    if (
+      !escolhas ||
+      !escolhas.fundacao ||
+      !escolhas.estruturaSeca ||
+      !escolhas.estruturaMolhada ||
+      !escolhas.piso ||
+      !escolhas.maoDeObraFase1 ||
+      !escolhas.maoDeObraFase2
+    ) {
       return NextResponse.json(
         {
           sucesso: false,
-          erro: 'Todas as 4 decisões construtivas (Fundação, Estrutura Seca, Estrutura Molhada e Piso) devem ser selecionadas.',
+          erro: 'Todas as 6 decisões (Fundação, Estrutura Seca, Banheiro, Piso e as 2 Fases de Mão de Obra) devem ser selecionadas.',
         },
         { status: 400 }
       );
@@ -894,6 +904,175 @@ export async function POST(request: Request) {
       observacoes: 'Fixação flexível que absorve dilatações diferenciais térmicas sem danificar esquadrias.',
     });
 
+    // =========================================================================
+    // ETAPA 6: MÃO DE OBRA & EMPREITADA SEGMENTADA POR FASES
+    // =========================================================================
+    const { maoDeObraFase1, maoDeObraFase2 } = escolhas;
+
+    // --- FASE 1: FUNDAÇÃO, BASE E HIDRÁULICA (TRABALHO PESADO) ---
+    let itemMaoDeObraFase1: ItemObraCalculado;
+
+    if (maoDeObraFase1 === 'Empreitada Fechada (M2) - Pedreiro + Ajudante') {
+      const valorUnitario = 200.00;
+      const brutoUnitario = 220.00;
+      const descontoUnitario = 20.00;
+      itemMaoDeObraFase1 = {
+        id: `mo-fase1-empreitada-${timestamp}`,
+        codigo: '6.1',
+        descricao: 'Mão de Obra Fase 1: Fundação, Base e Hidráulica (Empreitada Fechada M²)',
+        categoria: 'Mão de Obra',
+        unidade: 'm²',
+        quantidade: areaTotal,
+        aplicarMargemPerda: false,
+        status: 'Em Cotação',
+        valorBruto: Number((areaTotal * brutoUnitario).toFixed(2)),
+        desconto: Number((areaTotal * descontoUnitario).toFixed(2)),
+        valorLiquido: Number((areaTotal * valorUnitario).toFixed(2)),
+        observacoes: 'Equipe de pedreiro e ajudante: locação de obra, escavação, montagem de fôrmas, armaduras de aço, concretagem e tubulações hidráulicas embutidas na base.',
+      };
+    } else if (maoDeObraFase1 === 'Diárias (Gestão Própria)') {
+      const diasEstimados = Math.max(8, Math.ceil(areaTotal * 0.28));
+      const valorDiariaDupla = 350.00; // Pedreiro R$ 220 + Servente R$ 130
+      const brutoDiaria = 370.00;
+      const descontoDiaria = 20.00;
+      itemMaoDeObraFase1 = {
+        id: `mo-fase1-diarias-${timestamp}`,
+        codigo: '6.1',
+        descricao: `Mão de Obra Fase 1: Diárias de Pedreiro Oficial + Servente (${diasEstimados} diárias estimadas)`,
+        categoria: 'Mão de Obra',
+        unidade: 'diária',
+        quantidade: diasEstimados,
+        aplicarMargemPerda: false,
+        status: 'Em Cotação',
+        valorBruto: Number((diasEstimados * brutoDiaria).toFixed(2)),
+        desconto: Number((diasEstimados * descontoDiaria).toFixed(2)),
+        valorLiquido: Number((diasEstimados * valorDiariaDupla).toFixed(2)),
+        observacoes: 'Gestão direta por diárias para fundações, nivelamento do terreno e tubulações passantes de esgoto/água.',
+      };
+    } else if (maoDeObraFase1 === 'Autoconstrução (Custo Zero / Apenas Ferramentas)') {
+      itemMaoDeObraFase1 = {
+        id: `mo-fase1-autoconstrucao-${timestamp}`,
+        codigo: '6.1',
+        descricao: 'Mão de Obra Fase 1: Fundação, Base e Hidráulica (Autoconstrução / Mutirão Familiar)',
+        categoria: 'Mão de Obra',
+        unidade: 'verba',
+        quantidade: 1,
+        aplicarMargemPerda: false,
+        status: 'Planejado',
+        valorBruto: 0.00,
+        desconto: 0.00,
+        valorLiquido: 0.00,
+        observacoes: 'Execução direta pelo proprietário em regime de autoconstrução. Custo financeiro de mão de obra direta nulo (R$ 0,00).',
+      };
+    } else {
+      itemMaoDeObraFase1 = {
+        id: `mo-fase1-custom-${timestamp}`,
+        codigo: '6.1',
+        descricao: `Mão de Obra Fase 1: Fundação e Hidráulica (${maoDeObraFase1})`,
+        categoria: 'Mão de Obra',
+        unidade: 'm²',
+        quantidade: areaTotal,
+        aplicarMargemPerda: false,
+        status: 'Em Cotação',
+        valorBruto: Number((areaTotal * 200.00).toFixed(2)),
+        desconto: 0.00,
+        valorLiquido: Number((areaTotal * 200.00).toFixed(2)),
+        observacoes: 'Mão de obra para serviços pesados de infraestrutura e instalações primárias.',
+      };
+    }
+    itens.push(itemMaoDeObraFase1);
+
+    // --- FASE 2: ESTRUTURA, COBERTURA E ACABAMENTO (TRABALHO LIMPO/MONTAGEM) ---
+    let itemMaoDeObraFase2: ItemObraCalculado;
+
+    if (maoDeObraFase2 === 'Empreitada Especializada (Carpintaria/Wood Frame)') {
+      const valorUnitario = 260.00;
+      const brutoUnitario = 285.00;
+      const descontoUnitario = 25.00;
+      itemMaoDeObraFase2 = {
+        id: `mo-fase2-carpintaria-${timestamp}`,
+        codigo: '6.2',
+        descricao: 'Mão de Obra Fase 2: Carpintaria Especializada e Montagem Wood Frame/Pinus',
+        categoria: 'Mão de Obra',
+        unidade: 'm²',
+        quantidade: areaTotal,
+        aplicarMargemPerda: false,
+        status: 'Em Cotação',
+        valorBruto: Number((areaTotal * brutoUnitario).toFixed(2)),
+        desconto: Number((areaTotal * descontoUnitario).toFixed(2)),
+        valorLiquido: Number((areaTotal * valorUnitario).toFixed(2)),
+        observacoes: 'Profissionais especialistas em estruturas de madeira: montagem de montantes, vigamento aéreo, tesouras de telhado, isolamentos e forros.',
+      };
+    } else if (maoDeObraFase2 === 'Empreitada Convencional (Pedreiro de Alvenaria)') {
+      const valorUnitario = 225.00;
+      const brutoUnitario = 250.00;
+      const descontoUnitario = 25.00;
+      itemMaoDeObraFase2 = {
+        id: `mo-fase2-alvenaria-${timestamp}`,
+        codigo: '6.2',
+        descricao: 'Mão de Obra Fase 2: Alvenaria Convencional, Telhado e Revestimentos',
+        categoria: 'Mão de Obra',
+        unidade: 'm²',
+        quantidade: areaTotal,
+        aplicarMargemPerda: false,
+        status: 'Em Cotação',
+        valorBruto: Number((areaTotal * brutoUnitario).toFixed(2)),
+        desconto: Number((areaTotal * descontoUnitario).toFixed(2)),
+        valorLiquido: Number((areaTotal * valorUnitario).toFixed(2)),
+        observacoes: 'Pedreiro e servente: elevação de alvenaria estrutural/vedação, assentamento de revestimentos cerâmicos e cobertura.',
+      };
+    } else if (maoDeObraFase2 === 'Diárias (Gestão Própria)') {
+      const diasEstimados = Math.max(12, Math.ceil(areaTotal * 0.45));
+      const valorDiariaDupla = 350.00;
+      const brutoDiaria = 375.00;
+      const descontoDiaria = 25.00;
+      itemMaoDeObraFase2 = {
+        id: `mo-fase2-diarias-${timestamp}`,
+        codigo: '6.2',
+        descricao: `Mão de Obra Fase 2: Diárias de Montagem e Acabamentos (${diasEstimados} diárias estimadas)`,
+        categoria: 'Mão de Obra',
+        unidade: 'diária',
+        quantidade: diasEstimados,
+        aplicarMargemPerda: false,
+        status: 'Em Cotação',
+        valorBruto: Number((diasEstimados * brutoDiaria).toFixed(2)),
+        desconto: Number((diasEstimados * descontoDiaria).toFixed(2)),
+        valorLiquido: Number((diasEstimados * valorDiariaDupla).toFixed(2)),
+        observacoes: 'Contratação direta por diárias para montagem da superestrutura, colocação de cobertura e acabamentos finos.',
+      };
+    } else if (maoDeObraFase2 === 'Autoconstrução (Custo Zero)') {
+      itemMaoDeObraFase2 = {
+        id: `mo-fase2-autoconstrucao-${timestamp}`,
+        codigo: '6.2',
+        descricao: 'Mão de Obra Fase 2: Estrutura, Cobertura e Acabamento (Autoconstrução / Faça Você Mesmo)',
+        categoria: 'Mão de Obra',
+        unidade: 'verba',
+        quantidade: 1,
+        aplicarMargemPerda: false,
+        status: 'Planejado',
+        valorBruto: 0.00,
+        desconto: 0.00,
+        valorLiquido: 0.00,
+        observacoes: 'Montagem estrutural e acabamentos executados pelo próprio construtor em regime DIY/mutirão. Custo de mão de obra zerado (R$ 0,00).',
+      };
+    } else {
+      itemMaoDeObraFase2 = {
+        id: `mo-fase2-custom-${timestamp}`,
+        codigo: '6.2',
+        descricao: `Mão de Obra Fase 2: Superestrutura e Acabamentos (${maoDeObraFase2})`,
+        categoria: 'Mão de Obra',
+        unidade: 'm²',
+        quantidade: areaTotal,
+        aplicarMargemPerda: false,
+        status: 'Em Cotação',
+        valorBruto: Number((areaTotal * 240.00).toFixed(2)),
+        desconto: 0.00,
+        valorLiquido: Number((areaTotal * 240.00).toFixed(2)),
+        observacoes: 'Mão de obra para fechamentos e acabamentos finos da edificação.',
+      };
+    }
+    itens.push(itemMaoDeObraFase2);
+
     // Totais calculados
     const totalBruto = itens.reduce((acc, i) => acc + i.valorBruto, 0);
     const economiaTotal = itens.reduce((acc, i) => acc + i.desconto, 0);
@@ -914,6 +1093,8 @@ export async function POST(request: Request) {
         estruturaSeca: escolhas.estruturaSeca,
         estruturaMolhada: escolhas.estruturaMolhada,
         piso: escolhas.piso,
+        maoDeObraFase1: escolhas.maoDeObraFase1,
+        maoDeObraFase2: escolhas.maoDeObraFase2,
         areaCalculada: areaTotal,
         qtdItensGerados: itens.length,
       },

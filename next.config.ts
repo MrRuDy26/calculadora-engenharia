@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
-  // Configurações padrão do Next.js
+  outputFileTracingRoot: path.resolve(__dirname),
 };
 
 export default nextConfig;

@@ -124,16 +124,23 @@ export default function DashboardPage() {
   const [modalResultadoAberto, setModalResultadoAberto] = useState(false);
 
   // =========================================================================
-  // FASE 2: ESTADOS DE DECISÃO CONSTRUTIVA DO ENGENHEIRO (PAINEL DINÂMICO)
+  // FASE 2: ESTADOS DE DECISÃO CONSTRUTIVA E MÃO DE OBRA (PAINEL DINÂMICO)
   // =========================================================================
   const [escolhaFundacao, setEscolhaFundacao] = useState<string>('');
   const [escolhaEstruturaSeca, setEscolhaEstruturaSeca] = useState<string>('');
   const [escolhaEstruturaMolhada, setEscolhaEstruturaMolhada] = useState<string>('');
   const [escolhaPiso, setEscolhaPiso] = useState<string>('');
+  const [escolhaMaoDeObraFase1, setEscolhaMaoDeObraFase1] = useState<string>('');
+  const [escolhaMaoDeObraFase2, setEscolhaMaoDeObraFase2] = useState<string>('');
   const [isGerandoOrcamento, setIsGerandoOrcamento] = useState(false);
 
   const todasEscolhasFeitas = Boolean(
-    escolhaFundacao && escolhaEstruturaSeca && escolhaEstruturaMolhada && escolhaPiso
+    escolhaFundacao &&
+      escolhaEstruturaSeca &&
+      escolhaEstruturaMolhada &&
+      escolhaPiso &&
+      escolhaMaoDeObraFase1 &&
+      escolhaMaoDeObraFase2
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -536,6 +543,8 @@ export default function DashboardPage() {
       setEscolhaEstruturaSeca('');
       setEscolhaEstruturaMolhada('');
       setEscolhaPiso('');
+      setEscolhaMaoDeObraFase1('');
+      setEscolhaMaoDeObraFase2('');
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -728,7 +737,7 @@ export default function DashboardPage() {
   // =========================================================================
   const handleGerarOrcamentoDecisoes = async () => {
     if (!todasEscolhasFeitas) {
-      alert('Por favor, selecione todas as 4 opções construtivas (Fundação, Estrutura Seca, Banheiro e Piso) antes de gerar o orçamento.');
+      alert('Por favor, selecione todas as 6 opções (Fundação, Estrutura Seca, Banheiro, Piso e as 2 Fases de Mão de Obra) antes de gerar o orçamento.');
       return;
     }
 
@@ -773,6 +782,8 @@ export default function DashboardPage() {
             estruturaSeca: escolhaEstruturaSeca,
             estruturaMolhada: escolhaEstruturaMolhada,
             piso: escolhaPiso,
+            maoDeObraFase1: escolhaMaoDeObraFase1,
+            maoDeObraFase2: escolhaMaoDeObraFase2,
           },
         }),
       });
@@ -1389,7 +1400,7 @@ export default function DashboardPage() {
                 Painel de Decisões Construtivas (Escolha do Engenheiro)
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Selecione as diretrizes construtivas do chalé. O motor de cálculo utilizará a geometria e essas 4 decisões para calcular quantitativos reais.
+                Selecione as diretrizes construtivas e a mão de obra do chalé. O motor de cálculo utilizará a geometria e essas 6 decisões para calcular quantitativos reais.
               </p>
             </div>
 
@@ -1401,12 +1412,12 @@ export default function DashboardPage() {
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                   : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
               }`}>
-                {[escolhaFundacao, escolhaEstruturaSeca, escolhaEstruturaMolhada, escolhaPiso].filter(Boolean).length} de 4 Decididas
+                {[escolhaFundacao, escolhaEstruturaSeca, escolhaEstruturaMolhada, escolhaPiso, escolhaMaoDeObraFase1, escolhaMaoDeObraFase2].filter(Boolean).length} de 6 Decididas
               </span>
             </div>
           </div>
 
-          {/* Grid com os 4 Dropdowns (Selects Obrigatórios) */}
+          {/* Grid com os 4 Dropdowns de Materiais Construtivos */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-5">
             
             {/* 1. Fundação */}
@@ -1494,13 +1505,88 @@ export default function DashboardPage() {
 
           </div>
 
+          {/* ================================================================= */}
+          {/* SUBSEÇÃO VISUALMENTE DISTINTA: MÃO DE OBRA & EMPREITADA           */}
+          {/* ================================================================= */}
+          <div className="mt-6 pt-5 border-t border-slate-800/80">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                  <Hammer className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    Mão de Obra & Empreitada
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                      Segmentação por Fases
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-400">
+                    Defina o regime de contratação para o controle de desembolso e cronograma físico do canteiro.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Fase 1: Fundação, Base e Hidráulica (Trabalho Pesado) */}
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-amber-500/20 hover:border-amber-500/40 transition space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-amber-300 font-mono flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span>5. Fase 1: Fundação, Base e Hidráulica</span>
+                    <span className="text-[10px] text-slate-400 font-normal font-sans">(Trabalho Pesado)</span>
+                  </span>
+                  {escolhaMaoDeObraFase1 && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                </label>
+                <select
+                  value={escolhaMaoDeObraFase1}
+                  onChange={(e) => setEscolhaMaoDeObraFase1(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium cursor-pointer"
+                >
+                  <option value="">Selecione...</option>
+                  <option value="Empreitada Fechada (M2) - Pedreiro + Ajudante">Empreitada Fechada (M2) - Pedreiro + Ajudante</option>
+                  <option value="Diárias (Gestão Própria)">Diárias (Gestão Própria)</option>
+                  <option value="Autoconstrução (Custo Zero / Apenas Ferramentas)">Autoconstrução (Custo Zero / Apenas Ferramentas)</option>
+                </select>
+                <p className="text-[11px] text-slate-500 leading-tight">
+                  Locação do canteiro, escavação manual/mecanizada, armaduras de aço, fôrmas, concretagem e rede de esgoto/água embutida.
+                </p>
+              </div>
+
+              {/* Fase 2: Estrutura, Cobertura e Acabamento (Trabalho Limpo/Montagem) */}
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-amber-500/20 hover:border-amber-500/40 transition space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-amber-300 font-mono flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span>6. Fase 2: Estrutura, Cobertura e Acabamento</span>
+                    <span className="text-[10px] text-slate-400 font-normal font-sans">(Trabalho Limpo/Montagem)</span>
+                  </span>
+                  {escolhaMaoDeObraFase2 && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                </label>
+                <select
+                  value={escolhaMaoDeObraFase2}
+                  onChange={(e) => setEscolhaMaoDeObraFase2(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium cursor-pointer"
+                >
+                  <option value="">Selecione...</option>
+                  <option value="Empreitada Especializada (Carpintaria/Wood Frame)">Empreitada Especializada (Carpintaria/Wood Frame)</option>
+                  <option value="Empreitada Convencional (Pedreiro de Alvenaria)">Empreitada Convencional (Pedreiro de Alvenaria)</option>
+                  <option value="Diárias (Gestão Própria)">Diárias (Gestão Própria)</option>
+                  <option value="Autoconstrução (Custo Zero)">Autoconstrução (Custo Zero)</option>
+                </select>
+                <p className="text-[11px] text-slate-500 leading-tight">
+                  Montagem de montantes estruturais, vigamento de cobertura, tesouras de telhado, colocação de telhas, pisos e esquadrias.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* FASE 3: BOTÃO DE GERAÇÃO BASEADO NAS ESCOLHAS */}
           <div className="mt-6 pt-5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-xs">
               {!todasEscolhasFeitas ? (
                 <span className="flex items-center gap-1.5 text-amber-400 font-mono">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  Selecione as 4 opções acima para habilitar o cálculo.
+                  Selecione as 6 opções acima para habilitar o cálculo.
                 </span>
               ) : areaUtil <= 0 ? (
                 <span className="flex items-center gap-1.5 text-amber-400 font-mono">
