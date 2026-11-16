@@ -32,7 +32,10 @@ import {
   Eye,
   Check,
   RefreshCw,
-  Lock
+  Lock,
+  Cloud,
+  FileText,
+  ClipboardList
 } from 'lucide-react';
 import { PlantaItemGerado, AnalisePlantaResponse } from './api/analisar-planta/route';
 
@@ -65,6 +68,7 @@ export interface ItemObra {
 const STORAGE_ITENS_KEY = 'minha_casa_no_campo_itens_v3';
 const STORAGE_AREA_KEY = 'minha_casa_no_campo_area_v3';
 const STORAGE_META_KEY = 'minha_casa_no_campo_meta_v3';
+const STORAGE_DECISOES_KEY = 'minha_casa_no_campo_decisoes_v3';
 
 const CATEGORIAS: CategoriaItem[] = [
   'Fundação',
@@ -134,6 +138,31 @@ export default function DashboardPage() {
   const [escolhaMaoDeObraFase2, setEscolhaMaoDeObraFase2] = useState<string>('');
   const [isGerandoOrcamento, setIsGerandoOrcamento] = useState(false);
 
+  // =========================================================================
+  // PERSISTÊNCIA NA NUVEM (SUPABASE) & FEEDBACK DE SINCRONIZAÇÃO
+  // =========================================================================
+  const [statusNuvem, setStatusNuvem] = useState<'ocioso' | 'salvando' | 'salvo' | 'erro'>('ocioso');
+  const [ultimaSincronizacao, setUltimaSincronizacao] = useState<string>('');
+  const [isSalvandoNuvem, setIsSalvandoNuvem] = useState(false);
+  const [alertaToast, setAlertaToast] = useState<{ tipo: 'sucesso' | 'info' | 'erro'; mensagem: string } | null>(null);
+
+  // =========================================================================
+  // IMPORTAÇÃO INTELIGENTE DE LISTA DE QUANTITATIVOS COM IA
+  // =========================================================================
+  const [modalImportarListaAberto, setModalImportarListaAberto] = useState(false);
+  const [abaImportacaoLista, setAbaImportacaoLista] = useState<'texto' | 'arquivo'>('texto');
+  const [textoListaInput, setTextoListaInput] = useState('');
+  const [arquivoListaBase64, setArquivoListaBase64] = useState<string | null>(null);
+  const [nomeArquivoLista, setNomeArquivoLista] = useState('');
+  const [isProcessandoLista, setIsProcessandoLista] = useState(false);
+  const [resultadoProcessamentoLista, setResultadoProcessamentoLista] = useState<{
+    resumo?: string;
+    totalItens: number;
+    valorTotalEstimado: number;
+    itens: ItemObra[];
+  } | null>(null);
+  const fileInputListaRef = useRef<HTMLInputElement>(null);
+
   const todasEscolhasFeitas = Boolean(
     escolhaFundacao &&
       escolhaEstruturaSeca &&
@@ -144,37 +173,160 @@ export default function DashboardPage() {
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Carregamento inicial do LocalStorage
+  // 1. Carregamento inicial do LocalStorage e Sincronização com Nuvem
   useEffect(() => {
     try {
       const areaSalva = localStorage.getItem(STORAGE_AREA_KEY);
       const metaSalva = localStorage.getItem(STORAGE_META_KEY);
       const itensSalvos = localStorage.getItem(STORAGE_ITENS_KEY);
+      const decisoesSalvas = localStorage.getItem(STORAGE_DECISOES_KEY);
 
       if (areaSalva !== null) setAreaUtil(parseFloat(areaSalva) || 0);
       if (metaSalva !== null) setMetaOrcamento(parseFloat(metaSalva) || 0);
       if (itensSalvos) {
         const parsed = JSON.parse(itensSalvos);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           setItens(parsed);
         }
+      }
+      if (decisoesSalvas) {
+        const d = JSON.parse(decisoesSalvas);
+        if (d.fundacao) setEscolhaFundacao(d.fundacao);
+        if (d.estruturaSeca) setEscolhaEstruturaSeca(d.estruturaSeca);
+        if (d.estruturaMolhada) setEscolhaEstruturaMolhada(d.estruturaMolhada);
+        if (d.piso) setEscolhaPiso(d.piso);
+        if (d.maoDeObraFase1) setEscolhaMaoDeObraFase1(d.maoDeObraFase1);
+        if (d.maoDeObraFase2) setEscolhaMaoDeObraFase2(d.maoDeObraFase2);
       }
     } catch (e) {
       console.warn('Erro ao carregar dados do LocalStorage:', e);
     } finally {
       setIsLoaded(true);
     }
+
+    // Busca dados salvos na nuvem (Supabase) para garantir persistência entre dispositivos/sessões
+    const carregarNuvem = async () => {
+      try {
+        const res = await fetch('/api/orcamento-nuvem');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.sucesso && json.temDados && json.dados) {
+          const d = json.dados;
+          if (Array.isArray(d.itens) && d.itens.length > 0) {
+            setItens(d.itens);
+            try {
+              localStorage.setItem(STORAGE_ITENS_KEY, JSON.stringify(d.itens));
+            } catch {}
+          }
+          if (typeof d.areaUtil === 'number' && d.areaUtil > 0) {
+            setAreaUtil(d.areaUtil);
+            try {
+              localStorage.setItem(STORAGE_AREA_KEY, d.areaUtil.toString());
+            } catch {}
+          }
+          if (typeof d.metaOrcamento === 'number' && d.metaOrcamento > 0) {
+            setMetaOrcamento(d.metaOrcamento);
+            try {
+              localStorage.setItem(STORAGE_META_KEY, d.metaOrcamento.toString());
+            } catch {}
+          }
+          if (d.escolhas && Object.keys(d.escolhas).length > 0) {
+            if (d.escolhas.fundacao) setEscolhaFundacao(d.escolhas.fundacao);
+            if (d.escolhas.estruturaSeca) setEscolhaEstruturaSeca(d.escolhas.estruturaSeca);
+            if (d.escolhas.estruturaMolhada) setEscolhaEstruturaMolhada(d.escolhas.estruturaMolhada);
+            if (d.escolhas.piso) setEscolhaPiso(d.escolhas.piso);
+            if (d.escolhas.maoDeObraFase1) setEscolhaMaoDeObraFase1(d.escolhas.maoDeObraFase1);
+            if (d.escolhas.maoDeObraFase2) setEscolhaMaoDeObraFase2(d.escolhas.maoDeObraFase2);
+            try {
+              localStorage.setItem(STORAGE_DECISOES_KEY, JSON.stringify(d.escolhas));
+            } catch {}
+          }
+          setStatusNuvem('salvo');
+          if (d.updatedAt) {
+            const dt = new Date(d.updatedAt);
+            setUltimaSincronizacao(dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+          }
+        }
+      } catch (cloudErr) {
+        console.warn('Erro ao carregar dados da nuvem:', cloudErr);
+      }
+    };
+    carregarNuvem();
   }, []);
 
-  // 2. Persistência de Dados
-  const salvarItens = useCallback((novosItens: ItemObra[]) => {
-    setItens(novosItens);
-    try {
-      localStorage.setItem(STORAGE_ITENS_KEY, JSON.stringify(novosItens));
-    } catch (e) {
-      console.error('Erro ao persistir itens no LocalStorage:', e);
-    }
-  }, []);
+  // 2. Persistência de Dados (Local e Nuvem Supabase)
+  const salvarNuvem = useCallback(
+    async (
+      itensParaSalvar: ItemObra[],
+      areaParaSalvar: number,
+      metaParaSalvar: number,
+      escolhasParaSalvar?: any
+    ) => {
+      try {
+        setIsSalvandoNuvem(true);
+        setStatusNuvem('salvando');
+
+        const escolhasAtuais = escolhasParaSalvar || {
+          fundacao: escolhaFundacao,
+          estruturaSeca: escolhaEstruturaSeca,
+          estruturaMolhada: escolhaEstruturaMolhada,
+          piso: escolhaPiso,
+          maoDeObraFase1: escolhaMaoDeObraFase1,
+          maoDeObraFase2: escolhaMaoDeObraFase2,
+        };
+
+        const res = await fetch('/api/orcamento-nuvem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            areaUtil: areaParaSalvar,
+            metaOrcamento: metaParaSalvar,
+            escolhas: escolhasAtuais,
+            itens: itensParaSalvar,
+            dadosPlanta: resultadoAnaliseIA?.dadosPlanta || {},
+          }),
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (json.sucesso) {
+            setStatusNuvem('salvo');
+            const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            setUltimaSincronizacao(agora);
+          }
+        } else {
+          setStatusNuvem('erro');
+        }
+      } catch (err) {
+        console.warn('Erro ao salvar na nuvem:', err);
+        setStatusNuvem('erro');
+      } finally {
+        setIsSalvandoNuvem(false);
+      }
+    },
+    [
+      escolhaFundacao,
+      escolhaEstruturaSeca,
+      escolhaEstruturaMolhada,
+      escolhaPiso,
+      escolhaMaoDeObraFase1,
+      escolhaMaoDeObraFase2,
+      resultadoAnaliseIA,
+    ]
+  );
+
+  const salvarItens = useCallback(
+    (novosItens: ItemObra[]) => {
+      setItens(novosItens);
+      try {
+        localStorage.setItem(STORAGE_ITENS_KEY, JSON.stringify(novosItens));
+      } catch (e) {
+        console.error('Erro ao persistir itens no LocalStorage:', e);
+      }
+      salvarNuvem(novosItens, areaUtil, metaOrcamento);
+    },
+    [areaUtil, metaOrcamento, salvarNuvem]
+  );
 
   const handleAtualizarArea = (novaArea: number) => {
     const val = Math.max(0, novaArea || 0);
@@ -184,6 +336,7 @@ export default function DashboardPage() {
     } catch (e) {
       console.error('Erro ao salvar área:', e);
     }
+    salvarNuvem(itens, val, metaOrcamento);
   };
 
   const handleAtualizarMeta = (novaMeta: number) => {
@@ -194,6 +347,39 @@ export default function DashboardPage() {
     } catch (e) {
       console.error('Erro ao salvar meta:', e);
     }
+    salvarNuvem(itens, areaUtil, val);
+  };
+
+  const handleAtualizarDecisao = (campo: string, valor: string) => {
+    const novas = {
+      fundacao: campo === 'fundacao' ? valor : escolhaFundacao,
+      estruturaSeca: campo === 'estruturaSeca' ? valor : escolhaEstruturaSeca,
+      estruturaMolhada: campo === 'estruturaMolhada' ? valor : escolhaEstruturaMolhada,
+      piso: campo === 'piso' ? valor : escolhaPiso,
+      maoDeObraFase1: campo === 'maoDeObraFase1' ? valor : escolhaMaoDeObraFase1,
+      maoDeObraFase2: campo === 'maoDeObraFase2' ? valor : escolhaMaoDeObraFase2,
+    };
+    if (campo === 'fundacao') setEscolhaFundacao(valor);
+    if (campo === 'estruturaSeca') setEscolhaEstruturaSeca(valor);
+    if (campo === 'estruturaMolhada') setEscolhaEstruturaMolhada(valor);
+    if (campo === 'piso') setEscolhaPiso(valor);
+    if (campo === 'maoDeObraFase1') setEscolhaMaoDeObraFase1(valor);
+    if (campo === 'maoDeObraFase2') setEscolhaMaoDeObraFase2(valor);
+
+    try {
+      localStorage.setItem(STORAGE_DECISOES_KEY, JSON.stringify(novas));
+    } catch {}
+    salvarNuvem(itens, areaUtil, metaOrcamento, novas);
+  };
+
+  const handleSalvarNuvemManual = async () => {
+    setIsSalvandoNuvem(true);
+    await salvarNuvem(itens, areaUtil, metaOrcamento);
+    setAlertaToast({
+      tipo: 'sucesso',
+      mensagem: 'Planilha salva na nuvem com sucesso! Ao sair ou abrir em outro aparelho, tudo continuará salvo.',
+    });
+    setTimeout(() => setAlertaToast(null), 4000);
   };
 
   // 3. Cálculos Globais em Tempo Real
@@ -529,8 +715,8 @@ export default function DashboardPage() {
     setTimeout(() => gerarParametricoEsquadrias(), 150);
   };
 
-  // Limpar / Zerar Tudo (Tabela, Área, Meta, Planta e LocalStorage)
-  const handleZerarTudo = () => {
+  // Limpar / Zerar Tudo (Tabela, Área, Meta, Planta, Nuvem e LocalStorage)
+  const handleZerarTudo = async () => {
     if (confirm('Tem certeza que deseja zerar tudo? Todo o orçamento atual, área útil e planta carregada serão limpos.')) {
       salvarItens([]);
       handleAtualizarArea(0);
@@ -552,10 +738,105 @@ export default function DashboardPage() {
         localStorage.removeItem(STORAGE_ITENS_KEY);
         localStorage.removeItem(STORAGE_AREA_KEY);
         localStorage.removeItem(STORAGE_META_KEY);
+        localStorage.removeItem(STORAGE_DECISOES_KEY);
       } catch (e) {
         console.error('Erro ao limpar LocalStorage:', e);
       }
+      try {
+        await fetch('/api/orcamento-nuvem', { method: 'DELETE' });
+        setStatusNuvem('ocioso');
+        setUltimaSincronizacao('');
+        setAlertaToast({
+          tipo: 'info',
+          mensagem: 'Dados zerados com sucesso na nuvem e no dispositivo.',
+        });
+        setTimeout(() => setAlertaToast(null), 3500);
+      } catch (errCloud) {
+        console.warn('Erro ao limpar dados na nuvem:', errCloud);
+      }
     }
+  };
+
+  // =========================================================================
+  // HANDLERS DE IMPORTAÇÃO INTELIGENTE DE LISTA DE QUANTITATIVOS COM IA
+  // =========================================================================
+  const handleSelecionarArquivoLista = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setNomeArquivoLista(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setArquivoListaBase64(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleProcessarListaIA = async () => {
+    if (abaImportacaoLista === 'texto' && !textoListaInput.trim()) {
+      alert('Por favor, cole o texto da lista que o rapaz ou fornecedor te enviou.');
+      return;
+    }
+
+    if (abaImportacaoLista === 'arquivo' && !arquivoListaBase64) {
+      alert('Por favor, selecione uma foto ou PDF da lista de quantitativos.');
+      return;
+    }
+
+    setIsProcessandoLista(true);
+    try {
+      const res = await fetch('/api/processar-lista', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          texto: abaImportacaoLista === 'texto' ? textoListaInput : undefined,
+          arquivoBase64: abaImportacaoLista === 'arquivo' ? arquivoListaBase64 : undefined,
+          nomeArquivo: nomeArquivoLista,
+          areaUtil: areaUtil,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.sucesso) {
+        throw new Error(data.erro || 'Falha ao processar a lista com a IA.');
+      }
+
+      setResultadoProcessamentoLista({
+        resumo: data.resumo,
+        totalItens: data.totalItens || data.itens.length,
+        valorTotalEstimado: data.valorTotalEstimado || 0,
+        itens: data.itens,
+      });
+    } catch (err: any) {
+      console.error('Erro ao processar lista com IA:', err);
+      alert(err?.message || 'Erro ao processar lista de quantitativos com IA.');
+    } finally {
+      setIsProcessandoLista(false);
+    }
+  };
+
+  const handleAplicarItensLista = (modo: 'substituir' | 'adicionar') => {
+    if (!resultadoProcessamentoLista || resultadoProcessamentoLista.itens.length === 0) return;
+
+    const novosItens = resultadoProcessamentoLista.itens;
+    if (modo === 'substituir') {
+      salvarItens(novosItens);
+    } else {
+      salvarItens([...itens, ...novosItens]);
+    }
+
+    setModalImportarListaAberto(false);
+    setTextoListaInput('');
+    setArquivoListaBase64(null);
+    setNomeArquivoLista('');
+    setResultadoProcessamentoLista(null);
+
+    setAlertaToast({
+      tipo: 'sucesso',
+      mensagem: `${novosItens.length} itens da lista foram ${modo === 'substituir' ? 'importados na planilha' : 'adicionados ao orçamento'} e salvos na nuvem!`,
+    });
+    setTimeout(() => setAlertaToast(null), 4000);
   };
 
   // =========================================================================
@@ -1079,8 +1360,26 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Ações de Estado */}
+            {/* Ações de Estado & Nuvem */}
             <div className="flex items-center gap-1.5 border-l border-slate-800 pl-3">
+              {/* Botão Salvar na Nuvem */}
+              <button
+                onClick={handleSalvarNuvemManual}
+                disabled={isSalvandoNuvem}
+                className="px-3 py-2 bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 rounded-xl border border-emerald-500/30 transition disabled:opacity-40 cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+                title="Salvar alterações na nuvem Supabase para não perder na Vercel"
+              >
+                <Cloud className={`w-3.5 h-3.5 ${isSalvandoNuvem ? 'animate-bounce text-emerald-400' : 'text-emerald-400'}`} />
+                <span className="hidden sm:inline">
+                  {isSalvandoNuvem ? 'Salvando...' : 'Salvar Nuvem'}
+                </span>
+                {ultimaSincronizacao && (
+                  <span className="text-[10px] text-emerald-400/70 font-mono hidden md:inline">
+                    ({ultimaSincronizacao})
+                  </span>
+                )}
+              </button>
+
               <button
                 onClick={handleExportarCSV}
                 disabled={itens.length === 0}
@@ -1428,7 +1727,7 @@ export default function DashboardPage() {
               </label>
               <select
                 value={escolhaFundacao}
-                onChange={(e) => setEscolhaFundacao(e.target.value)}
+                onChange={(e) => handleAtualizarDecisao('fundacao', e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
               >
                 <option value="">Selecione...</option>
@@ -1449,7 +1748,7 @@ export default function DashboardPage() {
               </label>
               <select
                 value={escolhaEstruturaSeca}
-                onChange={(e) => setEscolhaEstruturaSeca(e.target.value)}
+                onChange={(e) => handleAtualizarDecisao('estruturaSeca', e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
               >
                 <option value="">Selecione...</option>
@@ -1470,7 +1769,7 @@ export default function DashboardPage() {
               </label>
               <select
                 value={escolhaEstruturaMolhada}
-                onChange={(e) => setEscolhaEstruturaMolhada(e.target.value)}
+                onChange={(e) => handleAtualizarDecisao('estruturaMolhada', e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
               >
                 <option value="">Selecione...</option>
@@ -1490,7 +1789,7 @@ export default function DashboardPage() {
               </label>
               <select
                 value={escolhaPiso}
-                onChange={(e) => setEscolhaPiso(e.target.value)}
+                onChange={(e) => handleAtualizarDecisao('piso', e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
               >
                 <option value="">Selecione...</option>
@@ -1540,7 +1839,7 @@ export default function DashboardPage() {
                 </label>
                 <select
                   value={escolhaMaoDeObraFase1}
-                  onChange={(e) => setEscolhaMaoDeObraFase1(e.target.value)}
+                  onChange={(e) => handleAtualizarDecisao('maoDeObraFase1', e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium cursor-pointer"
                 >
                   <option value="">Selecione...</option>
@@ -1564,7 +1863,7 @@ export default function DashboardPage() {
                 </label>
                 <select
                   value={escolhaMaoDeObraFase2}
-                  onChange={(e) => setEscolhaMaoDeObraFase2(e.target.value)}
+                  onChange={(e) => handleAtualizarDecisao('maoDeObraFase2', e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-medium cursor-pointer"
                 >
                   <option value="">Selecione...</option>
@@ -1770,8 +2069,20 @@ export default function DashboardPage() {
             </div>
 
             <button
+              onClick={() => {
+                setModalImportarListaAberto(true);
+                setResultadoProcessamentoLista(null);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95 cursor-pointer ml-auto md:ml-0"
+              title="Importar lista de quantitativos que o pedreiro/fornecedor te deu (Texto do WhatsApp, Foto ou PDF)"
+            >
+              <ClipboardList className="w-3.5 h-3.5 text-indigo-200" />
+              <span>Importar Lista c/ IA</span>
+            </button>
+
+            <button
               onClick={abrirFormNovo}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95 cursor-pointer ml-auto md:ml-0"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               Item Manual
@@ -1820,7 +2131,18 @@ export default function DashboardPage() {
 
               {itens.length === 0 ? (
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-                  {areaUtil > 0 ? (
+                  <button
+                    onClick={() => {
+                      setModalImportarListaAberto(true);
+                      setResultadoProcessamentoLista(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-lg shadow-indigo-950/40"
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    Importar Lista do Rapaz/Fornecedor c/ IA
+                  </button>
+
+                  {areaUtil > 0 && (
                     <button
                       onClick={gerarObraCompletaParametrica}
                       className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-lg shadow-emerald-950/40"
@@ -1828,10 +2150,6 @@ export default function DashboardPage() {
                       <Box className="w-4 h-4" />
                       Gerar Orçamento Baseado nas Decisões
                     </button>
-                  ) : (
-                    <p className="text-xs text-slate-400 text-center">
-                      Nenhum item adicionado. Envie a planta baixa pela IA acima ou defina a área para gerar o orçamento paramétrico.
-                    </p>
                   )}
                 </div>
               ) : (
@@ -2187,6 +2505,310 @@ export default function DashboardPage() {
 
               </form>
 
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* MODAL: IMPORTAR LISTA DE QUANTITATIVOS COM IA                     */}
+        {/* ================================================================= */}
+        {modalImportarListaAberto && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl relative my-8 overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+              
+              {/* Header do Modal */}
+              <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      Importar Lista de Quantitativos com IA
+                      <span className="text-[10px] font-mono uppercase bg-indigo-500/15 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/30">
+                        Classificação Automática
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Cole a lista do WhatsApp ou envie uma foto/PDF. A IA separa tudo em categorias, unidades e preços.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalImportarListaAberto(false)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Corpo do Modal */}
+              <div className="p-5 space-y-5 overflow-y-auto flex-1">
+                
+                {/* Seleção de Abas */}
+                <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+                  <button
+                    type="button"
+                    onClick={() => setAbaImportacaoLista('texto')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      abaImportacaoLista === 'texto'
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Colar Mensagem / WhatsApp
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAbaImportacaoLista('arquivo')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      abaImportacaoLista === 'arquivo'
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                    }`}
+                  >
+                    <FileUp className="w-3.5 h-3.5" />
+                    Upload Foto da Lista / PDF
+                  </button>
+                </div>
+
+                {/* Conteúdo Aba 1: Texto / WhatsApp */}
+                {abaImportacaoLista === 'texto' && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Cole a lista de materiais ou serviços aqui:
+                    </label>
+                    <textarea
+                      rows={6}
+                      value={textoListaInput}
+                      onChange={(e) => setTextoListaInput(e.target.value)}
+                      placeholder={`Exemplo de mensagem do WhatsApp ou caderno do empreiteiro:
+- 30 sacos de cimento CP II
+- 4 metros de areia grossa
+- 2 metros de brita 1
+- 10 barras de ferro 3/8
+- 120m de vigas de pinus autoclavado
+- 1 porta balcão de alumínio 1.60m
+- R$ 5.000 de mão de obra para fundação`}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 leading-relaxed placeholder:text-slate-600"
+                    />
+                    <p className="text-[11px] text-slate-500">
+                      Pode colar o texto cru como veio. A IA reconhecerá materiais, quantidades, unidades e valores automaticamente.
+                    </p>
+                  </div>
+                )}
+
+                {/* Conteúdo Aba 2: Arquivo Foto / PDF */}
+                {abaImportacaoLista === 'arquivo' && (
+                  <div className="space-y-3">
+                    <input
+                      ref={fileInputListaRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,application/pdf"
+                      onChange={handleSelecionarArquivoLista}
+                      className="hidden"
+                    />
+
+                    <div
+                      onClick={() => fileInputListaRef.current?.click()}
+                      className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition ${
+                        arquivoListaBase64
+                          ? 'border-indigo-500/50 bg-indigo-500/5'
+                          : 'border-slate-800 hover:border-slate-700 bg-slate-950/40'
+                      }`}
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-2.5">
+                        <UploadCloud className="w-6 h-6" />
+                      </div>
+                      {nomeArquivoLista ? (
+                        <div>
+                          <p className="text-xs sm:text-sm font-bold text-white font-mono">
+                            {nomeArquivoLista}
+                          </p>
+                          <span className="text-[11px] text-emerald-400 font-semibold mt-1 inline-block">
+                            Arquivo carregado! Pronto para análise da IA.
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-xs sm:text-sm font-semibold text-slate-200">
+                            Clique para selecionar a foto ou PDF da lista
+                          </p>
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            Foto de papel, orçamento de loja de materiais, PDF de fornecedor ou nota
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Botão Executar Processamento IA */}
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={handleProcessarListaIA}
+                    disabled={
+                      isProcessandoLista ||
+                      (abaImportacaoLista === 'texto' && !textoListaInput.trim()) ||
+                      (abaImportacaoLista === 'arquivo' && !arquivoListaBase64)
+                    }
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-indigo-950/50 cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    {isProcessandoLista ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-indigo-200" />
+                        <span>A IA está analisando e categorizando os itens...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-indigo-200" />
+                        <span>Processar Lista com IA</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Exibição do Resultado da IA */}
+                {resultadoProcessamentoLista && (
+                  <div className="space-y-4 pt-4 border-t border-slate-800 animate-in fade-in duration-200">
+                    
+                    {/* Card de Resumo */}
+                    <div className="p-4 rounded-xl bg-slate-950 border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase text-indigo-400 font-bold block">
+                          Resultado da Interpretação por IA
+                        </span>
+                        <h4 className="text-sm font-bold text-white mt-0.5">
+                          {resultadoProcessamentoLista.totalItens} itens identificados e categorizados
+                        </h4>
+                        {resultadoProcessamentoLista.resumo && (
+                          <p className="text-xs text-slate-400 mt-1">
+                            {resultadoProcessamentoLista.resumo}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-left sm:text-right shrink-0">
+                        <span className="text-[11px] font-mono text-slate-400 block uppercase">
+                          Total Estimado
+                        </span>
+                        <span className="text-base font-extrabold text-emerald-400 font-mono">
+                          {formatMoney(resultadoProcessamentoLista.valorTotalEstimado)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Tabela de Pré-visualização */}
+                    <div className="border border-slate-800 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
+                      <table className="w-full text-left text-xs text-slate-300 border-collapse">
+                        <thead className="bg-slate-950 text-slate-400 font-mono text-[10px] uppercase border-b border-slate-800 sticky top-0">
+                          <tr>
+                            <th className="py-2 px-3">Item</th>
+                            <th className="py-2 px-3">Descrição</th>
+                            <th className="py-2 px-3">Categoria</th>
+                            <th className="py-2 px-3">Qtd</th>
+                            <th className="py-2 px-3 text-right">Valor Líquido</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 font-sans">
+                          {resultadoProcessamentoLista.itens.map((it, idx) => (
+                            <tr key={it.id || idx} className="hover:bg-slate-800/30">
+                              <td className="py-2 px-3 font-mono text-slate-400 font-semibold whitespace-nowrap">
+                                #{it.codigo}
+                              </td>
+                              <td className="py-2 px-3">
+                                <div className="font-medium text-white">{it.descricao}</div>
+                                {it.observacoes && (
+                                  <div className="text-[10px] text-slate-400 truncate max-w-xs">
+                                    {it.observacoes}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 whitespace-nowrap">
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 border border-slate-700/60 font-medium">
+                                  {it.categoria}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 font-mono text-slate-200 whitespace-nowrap font-bold">
+                                {it.quantidade} {it.unidade}
+                              </td>
+                              <td className="py-2 px-3 font-mono text-emerald-400 text-right whitespace-nowrap font-bold">
+                                {formatMoney(it.valorLiquido)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Ações de Aplicação na Planilha */}
+                    <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <span className="text-xs text-slate-400 text-center sm:text-left">
+                        Como deseja aplicar esses itens no seu orçamento?
+                      </span>
+
+                      <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={() => handleAplicarItensLista('substituir')}
+                          className="flex-1 sm:flex-none px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-rose-300 hover:text-white text-xs font-semibold rounded-xl transition cursor-pointer border border-rose-900/40"
+                          title="Substitui toda a planilha pelos novos itens da lista"
+                        >
+                          Substituir Planilha Atual
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAplicarItensLista('adicionar')}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-lg shadow-emerald-950/40"
+                          title="Mantém os itens atuais e soma os itens desta lista"
+                        >
+                          Adicionar à Planilha Atual
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+
+              {/* Footer do Modal */}
+              <div className="p-4 border-t border-slate-800 flex justify-end bg-slate-950/60">
+                <button
+                  type="button"
+                  onClick={() => setModalImportarListaAberto(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl transition cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TOAST FLUTUANTE DE NOTIFICAÇÃO & SINCRONIZAÇÃO NUVEM              */}
+        {/* ================================================================= */}
+        {alertaToast && (
+          <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200 max-w-sm">
+            <div className={`px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-2.5 text-xs font-medium backdrop-blur-md ${
+              alertaToast.tipo === 'sucesso'
+                ? 'bg-emerald-950/90 text-emerald-200 border-emerald-500/40 shadow-emerald-950/50'
+                : alertaToast.tipo === 'erro'
+                ? 'bg-rose-950/90 text-rose-200 border-rose-500/40 shadow-rose-950/50'
+                : 'bg-slate-900/90 text-slate-200 border-slate-700 shadow-slate-950/50'
+            }`}>
+              {alertaToast.tipo === 'sucesso' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : alertaToast.tipo === 'erro' ? (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              ) : (
+                <Cloud className="w-4 h-4 text-blue-400 shrink-0" />
+              )}
+              <span>{alertaToast.mensagem}</span>
             </div>
           </div>
         )}
